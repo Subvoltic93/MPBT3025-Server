@@ -331,7 +331,7 @@ func TestLiveTargetedCombatFireBatch(t *testing.T) {
 			t.Fatalf("shot %d: incomplete native position/fire batch: %v", i, err)
 		}
 		selection, err := ParseClientCombatFire(batch.Fires[0])
-		if err != nil || selection.WeaponSlot != shot.Weapon || selection.TargetEntity != shot.Target || shot.Target != 1-i {
+		if err != nil || selection.WeaponSlot != shot.Weapon || selection.TargetEntity != shot.Target || selection.HitPart != 4 || shot.Target != 1-i {
 			t.Fatalf("shot %d: incorrect opposing target: %+v, %v", i, selection, err)
 		}
 		peer, err := CombatPeerFire(byte(i), batch.Fires[0])
@@ -356,5 +356,32 @@ func TestNativeDamageWriterLayouts(t *testing.T) {
 		if err != nil || string(command) != tc.command {
 			t.Fatalf("%s native writer changed: %x (%v)", tc.kind, command, err)
 		}
+	}
+}
+
+func TestNativeFireReportsCollisionPart(t *testing.T) {
+	var fixture struct {
+		CommandHex string `json:"command_hex"`
+	}
+	if err := json.Unmarshal(readNativeCombatFixture(t, "targeted-fire"), &fixture); err != nil {
+		t.Fatal(err)
+	}
+	command, err := hex.DecodeString(fixture.CommandHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := ParseClientCombatFire(command)
+	if err != nil || report.HitPart != 1 {
+		t.Fatalf("native part: %+v, %v", report, err)
+	}
+	command[3], command[4], command[5] = '!', '!', '!'
+	report, err = ParseClientCombatFire(command)
+	if err != nil || report.HitPart != -1 {
+		t.Fatal("zero part must decode as none")
+	}
+	command[3], command[4], command[5] = '"', '#', '$'
+	report, err = ParseClientCombatFire(command)
+	if err != nil || report.HitPart != 85*85+2*85+3-1 {
+		t.Fatal("part must use all three unsigned base85 digits")
 	}
 }

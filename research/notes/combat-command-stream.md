@@ -236,3 +236,43 @@ confirm the exact serializer/envelope layouts. These commands are not yet
 emitted: target selection alone does not determine location, amount or the
 remaining state fields. Next recover those values and server hit rules before
 attempting a controlled damage trial.
+
+## Absolute armor assignments and collision parts
+
+The native damage command's second AddDamage argument is an **absolute remaining
+value**, not an incoming damage delta. Resolver0x690500c0 subtracts incoming
+weapon damage from Mech armor at+0x190, queues slot21+armor with the remainder,
+and transfers excess to internal structure at+0x1e8 (slot32+internal). Original
+Damage0x690484c5..0x690484e1 only replaces an armor value if the new value is
+smaller. Applying a delta directly would corrupt state.
+
+`scripts/native-damage-fixture.py` executes that resolver and original
+GetDamageState0x69047fd0 with synthetic current/max armor arrays and internal
+structure. AddDamage is replaced with a bounded triple recorder. It separately
+executes original Damage with an inert Reality getter and non-local Mech to
+avoid rendering/server callbacks. These substitutions are explicit in the
+fixture; no native server initialization, clients or networking run.
+
+| Synthetic input (armor region 4, credit entity 7) | Native queued records: slot / remaining / credit |
+| --- | --- |
+| Armor 15, incoming 5, internal 20 | 25 / 10 / 7 |
+| Armor 3, incoming 5, internal 20 | 25 / 0 / 7; 36 / 18 / 7 |
+| Direct armor assignment 10, repeat 10, older 12 | Observed armor 10, 10, 10 |
+
+This fixture does not cover destruction, critical hits, depletion of internal
+structure, transfer chains, missile impacts or piloting-target calculation.
+The third argument propagates unchanged into damage event callbacks as a
+credit entity. Its server use still needs authenticated attribution.
+`CombatDamageCommand` encodes the explicit-entity `c` command and rejects field
+overflow. It is deliberately not yet emitted by the relay.
+
+SendShotCommand0x69049f95..0x69049fd1 copies HitReturn's entity+1 and part+1 to
+client fire object+0x31/+0x34. The latter serializes as three unsigned base85
+digits at command bytes3..5. Direct/local resolution0x6904a0dc passes those
+HitReturn values to GetMech and the armor resolver. Therefore the wire entity
+is a collision report, rather than merely the selected HUD target. Terrain
+collisions use another part space when no Mech entity is reported. Both saved
+opposite-direction laser batches decode to Mech armor part4. The relay now
+rejects Mech reports with missing/out-of-range parts (valid0..10), while
+preserving the separate terrain/untargeted space. This validates references;
+it does not independently validate collision geometry or award damage.

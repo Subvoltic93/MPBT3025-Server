@@ -117,10 +117,14 @@ func CombatPeerFire(entityID byte, clientFire []byte) ([]byte, error) {
 
 // CombatFireSelection identifies the references in a native client fire
 // report. TargetEntity is -1 for an untargeted shot, otherwise a zero-based
-// combat entity ID. This is a client report, not evidence of a hit.
+// collision entity ID, copied from HitReturn rather than HUD selection.
+// It remains a client report, not an independently validated hit.
 type CombatFireSelection struct {
 	WeaponSlot   byte
 	TargetEntity int
+	// HitPart is the reported collision part, minus one; -1 means none.
+	// It is an armor index only when TargetEntity names a Mech.
+	HitPart int
 }
 
 // ParseClientCombatFire follows writer 0x69070c20. Its first two payload
@@ -135,7 +139,11 @@ func ParseClientCombatFire(command []byte) (CombatFireSelection, error) {
 			return CombatFireSelection{}, fmt.Errorf("invalid native fire digit")
 		}
 	}
-	return CombatFireSelection{WeaponSlot: command[1] - '!', TargetEntity: int(command[2]-'!') - 1}, nil
+	part := 0
+	for _, digit := range command[3:6] {
+		part = part*85 + int(digit-'!')
+	}
+	return CombatFireSelection{WeaponSlot: command[1] - '!', TargetEntity: int(command[2]-'!') - 1, HitPart: part - 1}, nil
 }
 
 // ParseClientCombatData verifies the DLL's outbound stream. Unlike server

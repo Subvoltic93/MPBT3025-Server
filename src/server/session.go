@@ -611,7 +611,7 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 			continue
 		}
 		selection, _ := protocol.ParseClientCombatFire(clientFire)
-		log.Printf("Relay native combat fire in mission %d from %q: weapon slot %d, target entity %d", roomID, presence.callSign, selection.WeaponSlot, selection.TargetEntity)
+		log.Printf("Relay native combat fire in mission %d from %q: weapon slot %d, target entity %d, hit part %d", roomID, presence.callSign, selection.WeaponSlot, selection.TargetEntity, selection.HitPart)
 		fires = append(fires, fire)
 	}
 	h.mu.Unlock()
@@ -647,6 +647,11 @@ func combatFireForRoom(shooter byte, roster map[string]byte, command []byte) (pr
 		return protocol.PDU{}, fmt.Errorf("weapon slot %d is outside the COM-4D loadout", selection.WeaponSlot)
 	}
 	if selection.TargetEntity >= 0 {
+		// SendShotCommand copies HitReturn's Mech part plus one. The native
+		// armor resolver indexes exactly eleven armor regions with this value.
+		if selection.HitPart < 0 || selection.HitPart >= protocol.CombatArmorRegionCount {
+			return protocol.PDU{}, fmt.Errorf("Mech hit part %d is outside the native armor regions", selection.HitPart)
+		}
 		found := false
 		for _, entity := range roster {
 			if int(entity) == selection.TargetEntity {

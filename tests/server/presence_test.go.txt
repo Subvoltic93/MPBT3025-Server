@@ -429,3 +429,70 @@ func TestNativeCombatSpawnsFaceOriginAndKeepSeatsSeparate(t *testing.T) {
 		}
 	}
 }
+
+func TestCombatFireRejectsInvalidMechCollisionPart(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-native-targeted-fire.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		CommandHex string `json:"command_hex"`
+	}
+	if err = json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	command, err := hex.DecodeString(fixture.CommandHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range []int{-1, 0, 10, 11, 84} {
+		fire := append([]byte(nil), command...)
+		value := part + 1
+		fire[3], fire[4], fire[5] = byte(value/(85*85))+'!', byte(value/85%85)+'!', byte(value%85)+'!'
+		_, err := combatFireForRoom(0, map[string]byte{"Alpha": 0, "Beta": 1}, fire)
+		if (err == nil) != (part >= 0 && part < 11) {
+			t.Fatalf("Mech part %d: %v", part, err)
+		}
+		// Terrain/untargeted reports use another part space; do not apply the
+		// Mech armor bound when the collision entity is absent.
+		fire[2] = '!'
+		if _, err := combatFireForRoom(0, map[string]byte{"Alpha": 0, "Beta": 1}, fire); err != nil {
+			t.Fatalf("non-Mech part %d: %v", part, err)
+		}
+	}
+}
+
+func TestCapturedTargetedLaserPartsPassRoomValidation(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-live-targeted-fire.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Shots []struct {
+			Body string `json:"client_body_hex"`
+		} `json:"shots"`
+	}
+	if err = json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Shots) != 2 {
+		t.Fatal("missing opposing native laser reports")
+	}
+	for shooter, shot := range fixture.Shots {
+		body, err := hex.DecodeString(shot.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commands, err := protocol.ParseClientCombatData(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		batch, err := protocol.ParseClientCombatCommands(commands)
+		if err != nil || len(batch.Fires) != 1 {
+			t.Fatalf("native batch: %v", err)
+		}
+		if _, err := combatFireForRoom(byte(shooter), map[string]byte{"Alpha": 0, "Beta": 1}, batch.Fires[0]); err != nil {
+			t.Fatalf("captured laser %d rejected: %v", shooter, err)
+		}
+	}
+}

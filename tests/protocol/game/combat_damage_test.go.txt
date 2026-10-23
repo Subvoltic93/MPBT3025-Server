@@ -1,0 +1,65 @@
+package protocol
+
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"testing"
+)
+
+func TestCombatDamageMatchesNativeWriter(t *testing.T) {
+	var fixture struct {
+		CommandHex string `json:"command_hex"`
+	}
+	if err := json.Unmarshal(readNativeCombatFixture(t, "damage"), &fixture); err != nil {
+		t.Fatal(err)
+	}
+	want, err := hex.DecodeString(fixture.CommandHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := CombatDamageCommand(CombatDamageUpdate{EntityID: 1, Slot: 2, Remaining: 5, CreditEntity: 0, PilotingTarget: 3})
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("damage command %x, want native %x: %v", got, want, err)
+	}
+	for i := range 5 {
+		fields := [5]byte{1, 25, 10, 0, 3}
+		fields[i] = 85
+		if got, err := CombatDamageCommand(CombatDamageUpdate{fields[0], fields[1], fields[2], fields[3], fields[4]}); err == nil || got != nil {
+			t.Fatalf("accepted overflowing field %d", i)
+		}
+	}
+}
+
+func TestNativeArmorAssignmentsAreAbsolute(t *testing.T) {
+	var fixture struct {
+		Cases []struct {
+			Before   int      `json:"armor_before"`
+			Incoming int      `json:"incoming_damage"`
+			Records  [][3]int `json:"queued_records"`
+		} `json:"cases"`
+		Assignments []int `json:"absolute_assignments"`
+	}
+	if err := json.Unmarshal(readNativeCombatFixture(t, "armor-resolution"), &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Cases) != 2 || len(fixture.Assignments) != 3 {
+		t.Fatal("incomplete native armor evidence")
+	}
+	want := [][][3]int{{{25, 10, 7}}, {{25, 0, 7}, {36, 18, 7}}}
+	for i, c := range fixture.Cases {
+		if c.Incoming != 5 || len(c.Records) != len(want[i]) {
+			t.Fatalf("case %d: unexpected native damage records", i)
+		}
+		for j, r := range c.Records {
+			if r != want[i][j] {
+				t.Fatalf("case %d record %d: %v", i, j, r)
+			}
+		}
+	}
+	for _, remaining := range fixture.Assignments {
+		if remaining != 10 {
+			t.Fatal("native repeat/older armor assignment decreased or repaired armor")
+		}
+	}
+}

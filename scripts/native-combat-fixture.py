@@ -47,9 +47,10 @@ def main():
     parser.add_argument("kind", choices=("title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire", "damage", "local-damage"))
     parser.add_argument("--weapon-slot", type=int, choices=range(85), help="override the synthetic fire weapon slot")
     parser.add_argument("--target-entity", type=int, choices=range(-1, 84), help="override the synthetic fire target (-1 means none)")
+    parser.add_argument("--hit-part", type=int, choices=range(-1, 85), help="override synthetic fire hit part (-1 means none)")
     args = parser.parse_args()
-    if (args.weapon_slot is not None or args.target_entity is not None) and args.kind not in ("fire", "server-fire"):
-        parser.error("weapon/target overrides require fire or server-fire")
+    if (args.weapon_slot is not None or args.target_entity is not None or args.hit_part is not None) and args.kind not in ("fire", "server-fire"):
+        parser.error("weapon/target/part overrides require fire or server-fire")
     data = DLL.read_bytes()
     if hashlib.sha256(data).hexdigest() != "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f":
         raise ValueError("serializer offsets require the supplied September 2001 DLL")
@@ -82,6 +83,8 @@ def main():
         fields[0x30 if args.kind == "fire" else 0x31] = args.weapon_slot
     if args.target_entity is not None:
         fields[0x31 if args.kind == "fire" else 0x32] = args.target_entity + 1
+    if args.hit_part is not None:
+        fields[0x34] = args.hit_part + 1
     vectors = {}
     if args.kind == "commando":
         # Stock COM-4D initialization in FakeACat, 0x6905b696..0x6905b92b,

@@ -1,0 +1,50 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "kind": "armor-resolution",
+  "resolver": "0x690500c0",
+  "assignment": "0x69048100",
+  "substitutions": [
+    "AddDamage bounded recorder",
+    "synthetic Reality getter"
+  ],
+  "cases": [
+    {
+      "armor_index": 4,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          25,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 4,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          25,
+          0,
+          7
+        ],
+        [
+          36,
+          18,
+          7
+        ]
+      ]
+    }
+  ],
+  "absolute_assignments": [
+    10,
+    10,
+    10
+  ]
+}

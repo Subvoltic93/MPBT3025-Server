@@ -48,3 +48,7 @@ The October 23 live trial found a 36-byte standalone fire command that the old p
 ## Experimental spawn arrangement
 
 Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. No damage change was established. These are diagnostic spawns, not recovered production spawn rules.
+
+## Absolute armor assignment evidence
+
+`native-damage-fixture.py` executes the original armor resolver, damage-state lookup and non-destructive armor assignment on synthetic arrays. It replaces AddDamage with a bounded recorder and the Reality getter with an inert object; no Wine clients or networking run. Native results establish absolute remaining armor values, armor-to-internal overflow, and idempotent armor assignment. `SendShotCommand` also identifies the fire report’s entity and part as collision results. The relay validates Mech parts 0–10, and a native-compatible absolute damage encoder is available. Damage emission and authoritative hit checks remain pending. Detailed offsets and limitations are in the [combat notes](research/notes/combat-command-stream.md).

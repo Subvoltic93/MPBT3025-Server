@@ -20,7 +20,7 @@ The direct launch passes `aol:<server-host>:<server-port>:key:<local-key>` to `B
 
 This direct path bypasses the retired EA/GILS sign-in and launch service. The local key is only a development connection value; it is not an EA credential, and the emulator does not validate EA accounts or tickets. The client launcher and game files remain in a separate local client workspace and are not part of this server repository.
 
-The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-facing-spawn.json` and `runtime/traces/facing-spawn/`.
+The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-collision-part.json` and `runtime/traces/collision-part/`.
 
 ## Aries transport
 
@@ -88,8 +88,12 @@ The October 23 native trial verified Alpha 1/4 and Beta 0/4 for one Alpha pilot,
 
 ## Native fire references
 
-The 36-byte client command begins with `+`, followed by one base85 digit for weapon slot and one for target plus one. Target value zero means untargeted; otherwise subtract one to obtain the combat entity ID. The server `e` command inserts the authenticated shooter before those fields and omits the client's last byte. The target field is a client report and does not independently establish a hit. Native serializer fixtures and a captured standalone shot cover these layouts; see [combat research](research/notes/combat-command-stream.md).
+The 36-byte client command begins with `+`, followed by one base85 digit for weapon slot and one for collision entity plus one, then three unsigned base85 digits for collision part plus one. Zero means absent; otherwise subtract one. `SendShotCommand` copies these from `HitReturn`, rather than the selected HUD target. The server `e` command inserts the authenticated shooter before those fields and omits the client's last byte. A Mech collision report must name a rostered entity and armor part 0–10; terrain/untargeted parts use another index space. The report does not independently establish a valid hit. Native serializer fixtures and a captured standalone shot cover these layouts; see [combat research](research/notes/combat-command-stream.md).
 
 ## Experimental spawn arrangement
 
 Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. No damage change was established. These are diagnostic spawns, not recovered production spawn rules.
+
+## Native absolute damage assignments
+
+Key `0x42` / wire `c` carries five one-digit values: entity, state slot, remaining value, credit entity, piloting target. `CombatDamageCommand` matches the native writer and rejects field overflow; it is not emitted by the relay. Slots 21–31 represent absolute remaining armor, 32–39 internal structure. In isolated native runs, armor 15 taking 5 damage queues slot 25 = 10 for region 4; armor 3 overflows to slot 36 = 18 from internal 20. Original `Damage` only lowers armor: repeated 10 and older 12 assignments both leave it at 10. Server hit rules, component/destruction handling and piloting-target calculation remain unfinished.

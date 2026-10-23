@@ -555,3 +555,28 @@ target evolution and match results remain unfinished. Piloting target stays4.
 The new mode is disabled by default. Native cumulative damage/destruction
 delivery is not yet live-verified at this checkpoint. Save this implementation
 checkpoint before restarting only15011 for a bounded two-client trial.
+
+## Cumulative damage wrap-up at user's usage-limit request
+
+Implementation checkpoint `e56bc4b` is pushed to origin/main. Full normal and
+race suites pass, the server builds, the original armor fixture output remains
+unchanged, and generated documentation/diff whitespace checks pass. The native
+state/44-case damage fixtures and meaningful server regressions are committed.
+
+Restarted only15011 with cumulative damage enabled: serverPID418928, binary
+`runtime/mpbt3025-cumulative-laser`, world
+`runtime/world-test-15011-cumulative-laser.json`, log
+`runtime/logs/cumulative-laser.log`, traces `runtime/traces/cumulative-laser/`.
+Exactly two clients were started in arrival-a/b at nice10 (PIDs418940/419216,
+shell windows0x420000f/0x4c0000f). Both joined Mission1 with native Mech8,
+readied at16:16:33/35, and received two-human setup at16:17:34. The user then
+requested wrap-up because usage was running out. No cumulative damage shot
+was fired in this native trial; repeated damage/internal depletion/destruction
+delivery therefore remains live-unverified. Do not describe this mode as fully
+working authoritative combat from the unit/native-fixture evidence alone.
+
+Stopped only these two Wine prefixes at wrap-up to release CPU. No game
+clients remain. The cumulative-damage test server remains on15011; no unrelated
+server was changed. Resume with this saved build/world/log checkpoint, start
+at most two clients, and verify repeated medium-laser hits in both HUDs,
+including core depletion. Continue avoiding VCR flags and populated0x97.

@@ -1,0 +1,17 @@
+{
+  "source": "Two native clients, mirrored experimental spawns, 200m, 2026-10-23. Target selection and incoming laser visually confirmed; no damage change established.",
+  "shots": [
+    {
+      "time": "2026/10/23 13:14:06",
+      "client_body_hex": "0000004f1b21274b4b4b4b4b4c6c2d22683c4b4b4b4b4b4b4b4d554b4b4b4b4b4b4b4b4b4b4b4b212128592b21232121264b4b4b4b4b4b4b4b4b4b4b4c6c2d22683c4b4a2b544b4d446f4b4b4b4b22234c5c1b",
+      "weapon_slot": 0,
+      "target_entity": 1
+    },
+    {
+      "time": "2026/10/23 13:15:10",
+      "client_body_hex": "0000004f1b21274b4b4b4b4b4a2a6922683c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b21212b652b21222121264b4b4b4b4b4b4b4b4b4b4b4a2a6922683c4b4c6b3c4b4d446f4b4b4b4b223340681b",
+      "weapon_slot": 0,
+      "target_entity": 0
+    }
+  ]
+}

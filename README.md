@@ -133,3 +133,7 @@ python3 scripts/build_site.py
 ```
 
 The generator writes static HTML next to the source tree; GitHub Pages serves the committed files directly from the repository root. See [`project-files.html`](project-files.html) for the site index and downloads.
+
+## Experimental spawn arrangement
+
+Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. No damage change was established. These are diagnostic spawns, not recovered production spawn rules.

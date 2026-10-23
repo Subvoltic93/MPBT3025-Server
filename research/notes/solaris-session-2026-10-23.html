@@ -143,6 +143,61 @@ screenshots or binaries are committed. Public fixtures contain serializer or
 captured protocol bytes only. Full Go suite, server build and site generation
 are the completion checks. Continue with controlled targeting/clear sight;
 no hit/damage/result implementation is claimed by these changes.</p>
+<h2>Controlled spawn investigation checkpoint</h2>
+<p>Current checkout resumed clean at 36dcd83, server 395091 alone on 15011, no
+clients. Recovered FillMech's final initialization at 0x6904207e..0x690420fd:
+it computes <code>pi - atan2(X, -Y)</code>, scales both signed coordinates by .01,
+and calls SetPosition (0x69045920). The pi global 0x690d3f18 is initialized
+at 0x69042d70 from acos(-1). The existing X=100/120m, Y=1000m spawns were
+almost parallel and only 20m apart, making keyboard-only targeting awkward.</p>
+<p>Changed only experimental native launch positions: opposite lances at Y=+/-100m,
+seat offsets X=+/-30m per slot, mirrored through the origin. First opponents
+start 200m apart and face along the same origin line. Added spawn uniqueness/
+side/mirror coverage. Native visibility/target confirmation is still pending;
+this is a controlled diagnostic arrangement, not recovered production spawns.</p>
+<p>Facing-spawn live trial started: server PID396413, clients arrival-a396414
+(shell0x4e0000f/frame0x60d38e), arrival-b396419 (shell0x4a0000f/frame0x60d2e1).
+World <code>runtime/world-test-15011-facing-spawn.json</code>, log
+<code>runtime/logs/facing-spawn.log</code>, traces <code>runtime/traces/facing-spawn</code>.
+Both roster rows visible on Solaris and Mission1; Subvoltic Alpha, BetaPilot
+Beta. Ready requests accepted at13:12:18/21. All Go tests pass. Captures are
+local <code>runtime/facing-*.png</code>; no client files are committed.</p>
+<h2>Targeted native shot checkpoint</h2>
+<p>Both clients entered combat at13:13. New mirrored spawns give clear mutual
+sight, displayed 200.0m. On Subvoltic, BackSpace stabilized cursor mode; <code>t</code>
+selected BetaPilot and displayed its target damage panel. <code>r</code> alone had not
+selected it. LeftAlt .4s at13:14:06 produced the first verified native targeted
+report: <code>weapon slot 0, target entity 1</code>, relayed by the server. Receiving
+BetaPilot screenshot <code>runtime/facing-b-after-shot.png</code> shows the incoming
+laser from Subvoltic. This establishes targeted firing and receiving effect,
+not an authoritative damage result. Both clients remain running; do not launch
+more. Targeting and fire captures are <code>runtime/facing-a-target-t.png</code> and
+<code>runtime/facing-a-fired.png</code>.</p>
+<h2>Targeted trial completion and damage receive checkpoint</h2>
+<p>BetaPilot also selected Subvoltic and fired slot0/target0 at13:15:10. The four
+trial reports (two laser, two flamer) were all position/fire batches; new live
+standalone delivery remains pending. Saved the two laser bodies in
+<code>data/test-fixtures/combat-live-targeted-fire.json</code> with parser/peer conversion
+regressions. No damage change established. Stopped only arrival-a/b at13:17:56,
+before clock expiry; server396413 remains on15011. Both clients are now stopped.</p>
+<p>Recovered independent AddDamage visitors0x69073270/0x690732d0 at table offsets
+0x10/0x14. Their keys0x42/0x43, wire <code>c</code>/<code>d</code>, serialize five/four one-digit
+payloads. First includes target entity; second applies to receiver's local
+entity. They queue three AddDamage arguments and write a final byte to
+Mech+0xdc. Fire's weapon-type branch (types outside10..16) only sets +0x2f4 to trigger ApplyDamage;
+without queued records it cannot change armor. See combat-command-stream.md
+for offsets and next steps. Added isolated <code>damage</code>/<code>local-damage</code> native
+writer fixtures and exact-layout/envelope tests. No guessed live damage sent.</p>
+<p>Full Go suite passes after spawn and captured targeted-shot coverage, including
+the isolated damage-writer fixtures. Refresh generated site pages before push.
+Next: recover hit location/amount, third AddDamage argument and piloting-target calculation, then integrate a controlled server-owned hit path. Keep at most two
+clients; no VCR flags, no populated0x97 and no unrelated server restarts.</p>
+<p>Final static follow-up: exported SetPilotingTarget0x69004000 identifies the
+last damage-command byte (Mech+0xdc) as the piloting target. Correct calculation
+is still needed. Damage's first argument indexes a combined component/armor
+space (Damage0x69048143 compares against21); do not treat it as a simple HUD
+armor index without recovering the mapping. Both saved pilots now have no
+RoomID and Mission1 seats are empty. Server396413 alone remains on15011.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

@@ -18,9 +18,13 @@ The goal is a usable local multiplayer server with a clear boundary between conf
 
 1. Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.
 2. Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.
-3. Recheck standalone-fire delivery in a new native trial, establish clear mutual sight and a reported target, and distinguish lock/aim/fire reports from receiving-client damage. Use the recovered target-plus-one layout and then identify the smallest server-owned hit/damage step.
+3. Identify the server-owned hit/damage step using the recovered damage commands. Clear mutual sight, target selection and targeted laser relay in both directions are now demonstrated. New native standalone-fire delivery remains pending; the follow-up shots were position/fire batches.
 4. Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.
 
 ## Completion criteria
 
 The multiplayer loop is complete when two clients can enter a mission, receive correct roster and team displays, move and fire, see consistent hit and damage outcomes, and return to a stable result screen with persisted rewards. Each step must be repeatable from a clean local world snapshot and trace.
+
+## Experimental spawn arrangement
+
+Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. No damage change was established. These are diagnostic spawns, not recovered production spawn rules.

@@ -44,7 +44,7 @@ def mapped_image(data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=("title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire"))
+    parser.add_argument("kind", choices=("title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire", "damage", "local-damage"))
     parser.add_argument("--weapon-slot", type=int, choices=range(85), help="override the synthetic fire weapon slot")
     parser.add_argument("--target-entity", type=int, choices=range(-1, 84), help="override the synthetic fire target (-1 means none)")
     args = parser.parse_args()
@@ -72,6 +72,8 @@ def main():
                               0x38: -3, 0x3C: 4, 0x40: -5,
                               0x44: 6, 0x48: 7, 0x4C: -8,
                               0x50: 9, 0x54: -10},
+              "damage": {0x30: 1, 0x31: 2, 0x32: 5, 0x33: 0, 0x34: 3},
+              "local-damage": {0x30: 2, 0x31: 5, 0x32: 0, 0x33: 3},
               "mech": {0x30: 1, 0x31: 2, 0x64: -123, 0x68: 456,
                         0x6C: 3, 0x90: 17, 0x94: 18, 0x98: 19,
                         0x9C: 20, 0xA0: 4, 0xA1: 210, 0xA2: 5,
@@ -98,18 +100,19 @@ def main():
                    else set() if family == "client-position"
                    else {0x30, 0x31, 0x58} if family == "fire"
                    else {0x30, 0x31, 0x32} if family == "server-fire"
+                   else {0x30, 0x31, 0x32, 0x33, 0x34} if family in ("damage", "local-damage")
                    else {0x30, 0x31, 0x6C, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4})
     setup = []
     for offset, value in fields.items():
         size = "BYTE" if offset in byte_fields else "DWORD"
         setup.append(f"mov {size} PTR [command+{offset}], {value}")
-    strings = ({0x30: "Fixture"} if family == "title" else {} if family in ("ready", "position", "client-position", "fire", "server-fire") else {
+    strings = ({0x30: "Fixture"} if family == "title" else {} if family in ("ready", "position", "client-position", "fire", "server-fire", "damage", "local-damage") else {
         0x34: "FixturePilot", 0x44: "COM-4D", 0x54: "FixtureTeam",
         0x70: "FixtureModel", 0x80: "FixtureSkin"})
     if args.kind == "commando":
         strings = {0x34: "", 0x44: "FixturePilot", 0x54: "", 0x70: "COM-4D", 0x80: "Commando"}
     string_data = []
-    if family not in ("ready", "position", "client-position", "fire", "server-fire"):
+    if family not in ("ready", "position", "client-position", "fire", "server-fire", "damage", "local-damage"):
         for index, (offset, value) in enumerate(strings.items()):
             setup += [f"mov DWORD PTR [command+{offset + 4}], OFFSET string{index}",
                       f"mov DWORD PTR [command+{offset + 8}], {len(value)}"]
@@ -123,10 +126,11 @@ def main():
         string_data.append(f"vector{index}: .byte " + ",".join(str(b) for record in records for b in record))
     writer = {"title": 0x69072BE0, "mech": 0x6906E830, "ready": 0x6906C600,
               "position": 0x6906F350, "client-position": 0x6906F700,
-              "fire": 0x69070C20, "server-fire": 0x69070810}[family]
+              "fire": 0x69070C20, "server-fire": 0x69070810,
+              "damage": 0x6906BAA0, "local-damage": 0x6906BE00}[family]
     command_type = {"title": 0x48, "mech": 0x40, "ready": 0x3E,
                     "position": 0x41, "client-position": 0x06, "fire": 0x0A,
-                    "server-fire": 0x44}[family]
+                    "server-fire": 0x44, "damage": 0x42, "local-damage": 0x43}[family]
     setup += [f"mov BYTE PTR [command+0x24], {command_type}",
               "push OFFSET stream", "lea ecx, [command+4]",
               f"mov eax, {writer}", "call eax"]

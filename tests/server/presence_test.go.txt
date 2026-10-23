@@ -409,3 +409,23 @@ func TestStandaloneCombatFireRelaysOnlyAfterReadyToRoomPeer(t *testing.T) {
 		t.Fatal("standalone shot changed during relay")
 	}
 }
+
+func TestNativeCombatSpawnsFaceOriginAndKeepSeatsSeparate(t *testing.T) {
+	seen := map[[2]int32]bool{}
+	for side := range 2 {
+		for slot := range 4 {
+			x, y := nativeCombatSpawn(side, slot)
+			if side == 0 && y != 10000 || side == 1 && y != -10000 {
+				t.Fatalf("side %d slot %d is on wrong side: %d,%d", side, slot, x, y)
+			}
+			if seen[[2]int32{x, y}] {
+				t.Fatalf("duplicate spawn %d,%d", x, y)
+			}
+			seen[[2]int32{x, y}] = true
+			peerX, peerY := nativeCombatSpawn(1-side, slot)
+			if x != -peerX || y != -peerY {
+				t.Fatal("opposing seats must face along the same line through the origin")
+			}
+		}
+	}
+}

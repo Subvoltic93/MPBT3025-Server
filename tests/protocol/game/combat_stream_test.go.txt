@@ -24,7 +24,7 @@ func readNativeCombatFixture(t *testing.T, kind string) []byte {
 // receive preprocessing in an isolated i386 process. Regenerate with
 // scripts/native-combat-fixture.py; they are independent of the Go encoder.
 func TestCombatDataMatchesNativeFixtures(t *testing.T) {
-	for _, kind := range []string{"title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire", "targeted-fire", "server-targeted-fire"} {
+	for _, kind := range []string{"title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire", "targeted-fire", "server-targeted-fire", "damage", "local-damage"} {
 		t.Run(kind, func(t *testing.T) {
 			data := readNativeCombatFixture(t, kind)
 			var fixture struct {
@@ -295,6 +295,66 @@ func TestNativeStandaloneFireAndCompleteBatches(t *testing.T) {
 		batch, err := ParseClientCombatCommands(bad)
 		if err == nil || batch.Position != nil || len(batch.Fires) != 0 {
 			t.Fatal("unsupported/truncated batch produced partial commands")
+		}
+	}
+}
+
+func TestLiveTargetedCombatFireBatch(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "test-fixtures", "combat-live-targeted-fire.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Shots []struct {
+			Body   string `json:"client_body_hex"`
+			Weapon byte   `json:"weapon_slot"`
+			Target int    `json:"target_entity"`
+		} `json:"shots"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Shots) != 2 {
+		t.Fatal("expected the two opposing native laser reports")
+	}
+	for i, shot := range fixture.Shots {
+		body, err := hex.DecodeString(shot.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commands, err := ParseClientCombatData(body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		batch, err := ParseClientCombatCommands(commands)
+		if err != nil || len(batch.Position) != 37 || len(batch.Fires) != 1 {
+			t.Fatalf("shot %d: incomplete native position/fire batch: %v", i, err)
+		}
+		selection, err := ParseClientCombatFire(batch.Fires[0])
+		if err != nil || selection.WeaponSlot != shot.Weapon || selection.TargetEntity != shot.Target || shot.Target != 1-i {
+			t.Fatalf("shot %d: incorrect opposing target: %+v, %v", i, selection, err)
+		}
+		peer, err := CombatPeerFire(byte(i), batch.Fires[0])
+		if err != nil || peer[0] != 'e' || peer[1] != byte(i)+'!' || !bytes.Equal(peer[2:], batch.Fires[0][1:35]) {
+			t.Fatalf("shot %d changed when converted for its peer", i)
+		}
+	}
+}
+
+func TestNativeDamageWriterLayouts(t *testing.T) {
+	for _, tc := range []struct{ kind, command string }{
+		{"damage", "c\"#&!$"},
+		{"local-damage", "d#&!$"},
+	} {
+		var fixture struct {
+			CommandHex string `json:"command_hex"`
+		}
+		if err := json.Unmarshal(readNativeCombatFixture(t, tc.kind), &fixture); err != nil {
+			t.Fatal(err)
+		}
+		command, err := hex.DecodeString(fixture.CommandHex)
+		if err != nil || string(command) != tc.command {
+			t.Fatalf("%s native writer changed: %x (%v)", tc.kind, command, err)
 		}
 	}
 }

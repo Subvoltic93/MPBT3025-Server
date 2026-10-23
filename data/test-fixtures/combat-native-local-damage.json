@@ -1,0 +1,17 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "kind": "local-damage",
+  "fields": {
+    "0x30": 2,
+    "0x31": 5,
+    "0x32": 0,
+    "0x33": 3
+  },
+  "strings": {},
+  "vectors": {},
+  "command_hex": "6423262124",
+  "server_frame_hex": "1b216423262124263b361b",
+  "native_decode_matches": true,
+  "client_checksum": 358842,
+  "server_checksum": 293210
+}

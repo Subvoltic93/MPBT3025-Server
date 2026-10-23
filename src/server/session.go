@@ -458,6 +458,18 @@ func (h *sessionHub) publishMissionLaunch(roomID int, enter protocol.PDU) {
 	}
 }
 
+// nativeCombatSpawn places the experimental lances on opposite sides of the
+// origin, with 30 metres between seats and 200 metres between the first pair.
+// FillMech (0x6904207e..0x690420fd) scales coordinates by .01 and faces each
+// Mech toward the origin. Side-by-side spawns make a controlled shot difficult.
+func nativeCombatSpawn(side, slot int) (int32, int32) {
+	x, y := int32(slot)*3000, int32(10000)
+	if side == 1 {
+		x, y = -x, -y
+	}
+	return x, y
+}
+
 func (h *sessionHub) launchMission(roomID int) {
 	h.publishMissionLaunch(roomID, missionCurrentCombat(h.world, roomID))
 	h.publishMissionLaunch(roomID, protocol.EnterCombat())
@@ -468,7 +480,7 @@ func (h *sessionHub) launchMission(roomID int) {
 	players := []protocol.CombatPilot{}
 	ids := map[string]byte{}
 	for side, lance := range room.Seats {
-		for _, seat := range lance {
+		for slot, seat := range lance {
 			if seat.CallSign == "" {
 				continue
 			}
@@ -478,7 +490,8 @@ func (h *sessionHub) launchMission(roomID int) {
 			}
 			id := byte(len(players))
 			ids[seat.CallSign] = id
-			players = append(players, protocol.CombatPilot{ID: id, Team: byte(side), PlayerID: seat.CallSign, CallSign: seat.CallSign, X: 10000 + int32(id)*2000, Y: 100000})
+			x, y := nativeCombatSpawn(side, slot)
+			players = append(players, protocol.CombatPilot{ID: id, Team: byte(side), PlayerID: seat.CallSign, CallSign: seat.CallSign, X: x, Y: y})
 		}
 	}
 	h.mu.Lock()

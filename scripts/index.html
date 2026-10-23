@@ -32,6 +32,7 @@
 python3 scripts/native-combat-fixture.py server-fire --weapon-slot 2 --target-entity 1
 </code></pre>
 <p><code>--target-entity -1</code> selects an untargeted shot. Overrides apply only to <code>fire</code> and <code>server-fire</code>; their default fixtures remain unchanged. These commands require the separately supplied native DLL and use the pinned build's serializer offsets.</p>
+<p>For isolated damage-writer evidence, run <code>python3 scripts/native-combat-fixture.py damage</code> or <code>python3 scripts/native-combat-fixture.py local-damage</code>. These synthetic fixture commands execute the original writers and envelope round trip without launching Wine or contacting a server. They do not inject damage into a client.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../project-files.html">Project files and downloads</a></p>

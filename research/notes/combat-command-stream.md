@@ -198,3 +198,41 @@ No opponent lock, targeted shot, projectile impact or receiving-client damage
 was established in this trial. Camera motion during focus complicated aiming.
 Next establish clear mutual sight and correlate a reported target with peer
 state; do not apply guessed damage based only on a target field.
+
+### Experimental spawn arrangement
+
+Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. No damage change was established. These are diagnostic spawns, not recovered production spawn rules.
+
+## Targeted laser trial and separate damage callbacks
+
+The mirrored-spawn follow-up selected BetaPilot at 200m using `t`, then
+LeftAlt. Server log at13:14:06 confirms Subvoltic slot0/target1; BetaPilot
+slot0/target0 followed at13:15:10. The receiving screenshot shows the incoming
+laser; no armor/damage change was established. Both captured position/fire
+batches are in `data/test-fixtures/combat-live-targeted-fire.json` and replayed
+by tests. All four trial shots were batched; new native standalone delivery
+remains pending despite the existing captured standalone regression.
+
+The fire visitor 0x69073770 does not call AddDamage. Its local-target branch
+queues a presentation object; its final weapon-type branch (types outside10..16) sets Mech+0x2f4,
+which the update loop at0x69049e2e uses to call ApplyDamage. AddDamage must
+already have queued damage records for that call to change armor.
+
+Two separate receive commands provide that queue:
+
+| Key / wire | Native writer | Visitor / table offset | Payload (whole-object fields) |
+| --- | --- | --- | --- |
+| 0x42 / `c` | 0x6906baa0 | 0x69073270 / 0x10 | +0x30 entity, +0x31/+0x32/+0x33 AddDamage arguments, +0x34 state |
+| 0x43 / `d` | 0x6906be00 | 0x690732d0 / 0x14 | +0x30/+0x31/+0x32 AddDamage arguments, +0x33 state; receiver uses local entity |
+
+All payload fields use one base85 digit. Registration0x6906bb60 sets key0x42;
+0x6906be60 sets0x43. Both visitors require Reality state3. They call
+AddDamage0x6904a450, then assign their final byte to Mech+0xdc. The third
+AddDamage argument is widened to ushort; its meaning needs further confirmation.
+The final byte is the piloting target: exported SetPilotingTarget0x69004000
+writes precisely Mech+0xdc. Its correct server calculation remains unrecovered. ApplyDamage0x6904a5d0 later walks the
+queued triples and calls Damage0x69048100. Synthetic native fixtures now
+confirm the exact serializer/envelope layouts. These commands are not yet
+emitted: target selection alone does not determine location, amount or the
+remaining state fields. Next recover those values and server hit rules before
+attempting a controlled damage trial.

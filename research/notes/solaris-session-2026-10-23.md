@@ -356,3 +356,20 @@ Next inspect the weapon range/cadence consumers and decode the fire report's
 collision coordinates. A server check should be based on those native meanings,
 then tested with at most the two existing prefixes. Before enabling any new
 live behavior, record another checkpoint.
+
+## Collision point decoding checkpoint
+
+Continued offline from `bb11595`; server401100 remains the only listener on
+15011 and no clients are running. `SendShotCommand`0x69049e60 copies the three
+HitReturn doubles from offsets+0x10/+0x18/+0x20, multiplies each by100, and
+stores the resulting integers at fire-command offsets+0x4c/+0x50/+0x54. The
+native fire writer emits signed four-digit values in bytes23..34. Both saved
+live shots decode to `(-9936,13891,0)` and `(9930,13891,0)` hundredths.
+
+`ParseClientCombatFire` now exposes these fields as `HitPoint` and flags whether
+the report names a Mech. Regression decodes both original captured 0x81 frames;
+the complete overlay Go suite passes. This establishes that they are copied
+HitReturn coordinates, not that they prove a hit. Next compare them with
+authenticated-room positions and recover axes/tolerance before authorizing
+damage. No live behavior or process state changed; publish this checkpoint
+before any new native trial.

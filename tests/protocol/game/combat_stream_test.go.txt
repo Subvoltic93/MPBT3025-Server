@@ -250,6 +250,44 @@ func TestNativeTargetedFireReferences(t *testing.T) {
 	}
 }
 
+func TestLiveFireReportIncludesNativeHitReturnPoint(t *testing.T) {
+	var fixture struct {
+		Shots []struct {
+			ShooterEntity int    `json:"shooter_entity"`
+			ClientBodyHex string `json:"client_body_hex"`
+		} `json:"shots"`
+	}
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "test-fixtures", "combat-live-armor-probe.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	want := [][3]int32{{-9936, 13891, 0}, {9930, 13891, 0}}
+	if len(fixture.Shots) != len(want) {
+		t.Fatalf("live shot count = %d", len(fixture.Shots))
+	}
+	for i, shot := range fixture.Shots {
+		body, err := hex.DecodeString(shot.ClientBodyHex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commands, err := ParseClientCombatData(body)
+		if err != nil {
+			t.Fatalf("shooter %d combat frame: %v", shot.ShooterEntity, err)
+		}
+		batch, err := ParseClientCombatCommands(commands)
+		if err != nil || len(batch.Fires) != 1 {
+			t.Fatalf("shooter %d batch = %+v, %v", shot.ShooterEntity, batch, err)
+		}
+		selection, err := ParseClientCombatFire(batch.Fires[0])
+		if err != nil || !selection.HasHitPoint || selection.HitPoint != want[i] {
+			t.Fatalf("shooter %d hit point = %+v, %v; want %v", shot.ShooterEntity, selection, err, want[i])
+		}
+	}
+}
+
 func TestNativeStandaloneFireAndCompleteBatches(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "test-fixtures", "combat-live-standalone-fire.json"))
 	if err != nil {

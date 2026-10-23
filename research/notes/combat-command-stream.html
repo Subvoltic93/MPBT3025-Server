@@ -365,9 +365,16 @@ alongside the sampled fire report, but the server does not retain positions.</p>
 <code>+0x34..+0x48</code>: <code>[45,90,135,180,225,270]</code>. The use of those values as accuracy
 bands or as a hard firing range has not yet been confirmed, so they do not yet
 support a server range gate. The fire visitor consumes additional reported
-coordinates, but their wire offsets and relation to collision geometry still
-need to be matched from the native reader/writer and live packets. Continue
-with those consumers before changing the diagnostic's eligibility rules.</p>
+coordinates at object <code>+0x4c</code>, <code>+0x50</code>, and <code>+0x54</code>. <code>SendShotCommand</code>
+0x69049e60 copies <code>HitReturn</code>'s three doubles from offsets <code>+0x10</code>, <code>+0x18</code>,
+and <code>+0x20</code>, multiplying each by100 before storing them. The fire writer
+serializes these as signed four-digit values at client command bytes23..34.
+Both saved live shots decode to <code>(-9936,13891,0)</code> and <code>(9930,13891,0)</code> in
+hundredths of a world unit. <code>ParseClientCombatFire</code> now exposes that reported
+point, and a regression decodes both original captured frames. This confirms
+the point's source and scale; it is still client supplied. Compare it against
+authenticated-room positions and recover the coordinate axes and native hit
+tolerance before using it to authorize damage.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

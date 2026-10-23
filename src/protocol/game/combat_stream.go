@@ -125,6 +125,10 @@ type CombatFireSelection struct {
 	// HitPart is the reported collision part, minus one; -1 means none.
 	// It is an armor index only when TargetEntity names a Mech.
 	HitPart int
+	// HitPoint is the collision point reported by the native client in
+	// hundredths of a world unit. HasHitPoint is false for no-entity reports.
+	HitPoint    [3]int32
+	HasHitPoint bool
 }
 
 // ParseClientCombatFire follows writer 0x69070c20. Its first two payload
@@ -143,7 +147,25 @@ func ParseClientCombatFire(command []byte) (CombatFireSelection, error) {
 	for _, digit := range command[3:6] {
 		part = part*85 + int(digit-'!')
 	}
-	return CombatFireSelection{WeaponSlot: command[1] - '!', TargetEntity: int(command[2]-'!') - 1, HitPart: part - 1}, nil
+	point := [3]int32{
+		decodeSignedCombatCoordinate(command[23:27]),
+		decodeSignedCombatCoordinate(command[27:31]),
+		decodeSignedCombatCoordinate(command[31:35]),
+	}
+	target := int(command[2]-'!') - 1
+	return CombatFireSelection{WeaponSlot: command[1] - '!', TargetEntity: target, HitPart: part - 1,
+		HitPoint: point, HasHitPoint: target >= 0}, nil
+}
+
+// decodeSignedCombatCoordinate inverts the native four-digit signed value.
+// SendShotCommand serializes HitReturn's three doubles after multiplying by
+// 100, so decoded values retain hundredths of a world unit.
+func decodeSignedCombatCoordinate(encoded []byte) int32 {
+	value := int32(0)
+	for _, digit := range encoded {
+		value = value*85 + int32(digit-'!')
+	}
+	return value - 26100312 // 85^4/2
 }
 
 // ParseClientCombatData verifies the DLL's outbound stream. Unlike server

@@ -444,3 +444,51 @@ corrupt-frame rejection, and room isolation. Full overlay Go suite passes;
 the two focused tests also pass under the Go race detector. The new server
 build succeeds. Existing native server PID401100 and its no-client state
 remain unchanged. Axis and collision interpretation remain open.
+
+## Native two-client verification checkpoint — 14:36–14:47 local
+
+Started the updated position-cache binary as an isolated test server on
+`127.0.0.1:15011`, PID411761, using
+`runtime/world-test-15011-position-cache.json` and
+`runtime/traces/position-cache-test/`. No VCR flags or populated `0x97`
+responses were used. The existing `arrival-a` and `arrival-b` Wine prefixes
+were the only clients (PIDs411780 and412352; windows `0x420000f` and
+`0x4c0000f`). Both authenticated and entered Solaris city1, Cadet Mission1.
+
+The Mission Room on both clients showed Subvoltic in Lance Alpha and BetaPilot
+in Lance Beta, both with native COM-4D / 25-ton data, and three open seats per
+lance. The lower in-mission roster showed both pilots. Captures:
+`/home/sebulba/MPBT3025/client/.runtime/captures/position-cache-a-mission-room.png`
+and `position-cache-b-room-loaded.png`.
+
+Sent `PositionCacheAll` from BetaPilot while on All; the message appeared on
+both clients with one sender label. `PositionCacheTeam` and
+`PositionCacheHouse` appeared on BetaPilot's pane only, as expected for
+opposing lances and unassigned Houses. Captures use the matching
+`position-cache-{a,b}-chat-{all,team,house}*.png` names in the same capture
+directory. Both server traces contain the client chat commands.
+
+BetaPilot Ready produced subtype-2 `0x8C` body `02000000000001`; Subvoltic's
+peer view showed BetaPilot READY and BetaPilot's own view changed to Not Ready.
+Subvoltic Ready produced the same subtype with ready value1; both screens then
+showed both occupied seats READY and the auto-launch countdown. BetaPilot
+unreadied with value0; both peers refreshed BetaPilot to NOT READY. The
+countdown had one second remaining at the captured B view and expired at
+14:46:59, two seconds after that unready event. The server entered combat and
+sent native combat setup to both clients. Both Direct3D windows remained on
+the native `LOADING...` screen when the prefixes were stopped, so this run
+does not establish a usable cockpit or post-launch position traffic. This
+sequence also did not click Subvoltic Not Ready after BetaPilot's change; the
+last-ready-pilot countdown-cancel behavior remains unverified in this run.
+Ready and peer-state refresh are confirmed; countdown cancellation must not be
+claimed from this evidence.
+
+Combat screenshots are
+`position-cache-a-combat.png` and `position-cache-b-combat.png`; full session
+traces and server log remain under the ignored `runtime/` directories above.
+Both Wine prefixes were stopped with their prefix-specific `wineserver -k`;
+there are no game clients now. The test server PID411761 remains listening on
+15011 with the test world. No other server was changed. The complete Go suite
+passed after the live trial. Next resume axis-transform/collision-volume
+research and separately test that the final ready pilot cancels the countdown
+before attempting another combat entry.

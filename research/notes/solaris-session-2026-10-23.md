@@ -380,3 +380,12 @@ from each saved frame: shooter coordinates `(0,10000)` / `(0,-10000)` and
 reported points `(-9936,13891,0)` / `(9930,13891,0)`, all before converting
 hundredths to world units. These outputs document the distinct values but do
 not imply a validated ray or known target center. Full overlay tests pass.
+
+Further native trace: callback0x69073640 handles the local position-command
+family only in combat state3. It scales position fields by0.01 and calls
+Mech::SetPosition0x69045920; the client writer at0x6906f700 serializes those
+fields into the 37-byte `0x27` command. This confirms the position update feeds
+native pose state, but does not yet map the peer `0x41` application path or
+recover the 3D collision volume. The server still has no retained authoritative
+pose cache. Do not gate the hitpoint on these client reports until that receive
+path and collision tolerance are understood.

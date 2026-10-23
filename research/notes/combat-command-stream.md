@@ -340,3 +340,11 @@ the same native `0x27` command. The regression reads both from the original
 saved `0x81` frames as `(0,10000)` and `(0,-10000)`. Neither that decoder nor
 the fire-point parser changes relay behavior or promotes either report to
 authoritative state.
+
+Native callback0x69073640 processes the local position command in combat state3,
+scales pose fields by0.01, and calls `Mech::SetPosition`0x69045920. This ties
+the client `0x27` family to native pose updates. The server's peer command `b`
+uses a separate receive path; the server currently retains no position state,
+and the native Mech collision volume/tolerance remains unknown. A future hit
+check must first follow the peer `0x41` visitor and reconstruct its position
+updates independently of the collision report.

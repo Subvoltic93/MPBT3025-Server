@@ -331,3 +331,13 @@ build succeeds (`runtime/mpbt3025-armor-probe-final`). Live server401100 uses
 saved rooms/seats cleared. Documentation is refreshed for the bounded live
 success and remaining authoritative/full-damage/result gaps. Push this checkpoint
 with the implementation and protocol-only capture fixture.
+
+## Continuation checkpoint: position and weapon validation
+
+Resumed from pushed commit `6a8164b` on a clean `main` checkout. Only the
+isolated armor-probe server PID401100 is listening on `127.0.0.1:15011`; no
+BT3025 clients are running and no other listeners are being changed. Current
+work is offline native analysis of position serialization, range, and weapon
+timing so the next live trial can test a constrained server-side combat path.
+No code or live state changed yet. Before enabling any new live behavior,
+record another checkpoint and keep the client ceiling at two.

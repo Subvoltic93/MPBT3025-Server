@@ -14,6 +14,12 @@ The server speaks TCP with Aries framing. It does not serve HTTP.
 
 All default listeners bind to loopback, so they accept connections from this machine. Use `-listen` or `-world-listen` to change a bind address. Binding to a non-loopback interface makes the service reachable on that interface.
 
+## Direct client launch argument
+
+The tested local launch starts the existing game through `client/scripts/launch.sh` and passes `aol:<server-host>:<server-port>:key:<local-key>` to the executable. For the default listener, the argument is `aol:127.0.0.1:15000:key:local-dev`. `aol:` is the legacy startup argument that selects the Aries TCP endpoint; the host and port must match the server's `-listen` address. For a LAN server, bind with `-listen 0.0.0.0:15000` and put the server machine's reachable LAN address in the client argument.
+
+This direct path bypasses the retired EA/GILS sign-in and launch service. The local key is only a development connection value; it is not an EA credential, and the emulator does not validate EA accounts or tickets. The client launcher and game files remain in a separate local client workspace and are not part of this server repository.
+
 The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-combat-fire.json` and `runtime/traces/native-combat-fire/`.
 
 ## Aries transport

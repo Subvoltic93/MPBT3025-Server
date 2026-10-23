@@ -33,23 +33,35 @@ Run `go run ./src/cmd/server -h` for the available flags. Planet-state probes, r
 
 ## Connect a local client
 
-The client connects to the server over Aries on TCP. In the existing client's server-address settings, provide the server host and port; enter a host and port rather than an `http://` URL. Use a separately installed client: this project does not include or distribute client files.
+The tested local path passes the server address to the game at launch with its legacy `aol:` argument. It is not entered in an in-game server-address screen. The launcher and game files live in a separate local client workspace; this server repository does not include or distribute them.
 
-For a client running on the same computer, start the default listener and set the client address to `127.0.0.1`, port `15000`:
+Start the server from this repository:
 
 ```sh
 go run ./src/cmd/server -listen 127.0.0.1:15000
 ```
 
-For a client on another computer on your private LAN, bind the server to its network interfaces, then give the client the server computer's LAN IP address and port `15000`:
+Then, from the workspace root that contains your separate `client/` directory, launch the existing client helper with the `aol:<host>:<port>:key:<local-key>` argument:
+
+```sh
+./client/scripts/launch.sh game aol:127.0.0.1:15000:key:local-dev
+```
+
+For a client on another computer on your private LAN, start the server in one terminal from this repository, bound to its interfaces:
 
 ```sh
 go run ./src/cmd/server -listen 0.0.0.0:15000
 ```
 
-For example, if the server computer's LAN address is `192.168.1.25`, enter host `192.168.1.25` and port `15000` in the client. Allow inbound TCP port `15000` through the server computer's firewall for that trusted LAN. Do not enter `0.0.0.0` as the client host; it is the server's bind address. Keep the service on a local or trusted network because this prototype does not provide production account authentication.
+In a second terminal, from the workspace root that contains the separate `client/` directory, use the server computer's LAN address in the launch argument. For example, if that address is `192.168.1.25`:
 
-The optional secondary listener on port `15001` is used only with `-planet-redirect` and is experimental. It is not needed for the normal local connection. The exact steps for changing the address in a particular client installation depend on that client; no client configuration files are included here.
+```sh
+./client/scripts/launch.sh game aol:192.168.1.25:15000:key:local-dev
+```
+
+The `aol:` value tells the game where to open its Aries TCP connection. `local-dev` is a development key, not an EA account or password; the emulator does not implement the retired EA/GILS sign-in. Allow inbound TCP port `15000` through the server computer's firewall for the trusted LAN. Do not put `0.0.0.0` in the client argument; that address is only the server's bind target. Keep this unauthenticated prototype on a local or trusted network.
+
+The optional secondary listener on port `15001` is experimental and only used with `-planet-redirect`; it is not needed for the tested direct-launch path.
 
 ## Layout
 

@@ -492,3 +492,35 @@ there are no game clients now. The test server PID411761 remains listening on
 passed after the live trial. Next resume axis-transform/collision-volume
 research and separately test that the final ready pilot cancels the countdown
 before attempting another combat entry.
+
+## Clean two-human combat-entry retry — 15:09–15:11 local
+
+The prior trial intentionally un-readied BetaPilot with one second left on the
+countdown. That left only Subvoltic ready, so the documented solo-launch path
+inserted an AI opponent; the experimental native bootstrap correctly stopped
+at that unsupported AI Mech (`MechID 0`). This explains the earlier loading
+screens. It was not a position-cache or receive-path regression.
+
+Restarted the same build on 15011 with a fresh world whose Mission1 seats were
+empty and open. Relaunched only the two existing prefixes, stabilized
+arrival-a before starting arrival-b, and joined both pilots to Mission1. Both
+selected starter Mech8/COM-4D and clicked Ready at 15:09:51–15:09:52. Neither
+pilot changed readiness before expiry. At 15:10:51 the server sent a 371-byte
+native setup to each pilot (entity0/Subvoltic and entity1/BetaPilot). At
+15:10:55 it received a 53-byte combat-position frame from each, logged
+`All 2 native clients in mission 1 prepared; releasing combat`, and began
+sending 42-byte peer updates for the incoming 53-byte streams. Both clients
+rendered desert cockpits with COM-4D HUDs and each saw the opposing pilot in
+its view. Captures:
+`/home/sebulba/MPBT3025/client/.runtime/captures/position-cache-two-ready-a-combat.png`
+and `position-cache-two-ready-b-combat.png`. This also confirms the native
+preparation barrier and position receive/routing path on the updated build.
+
+Current final live state: server PID414593 on 15011 using
+`runtime/world-test-15011-position-cache-two-ready.json`; exactly two active
+clients remain, arrival-a PID414615/window `0x460000f` and arrival-b PID415361/
+window `0x4c0000f`. Both are in combat and still connected. No VCR flags,
+populated `0x97` replies, or unrelated servers were used or changed. Chat and
+both Ready states were visibly verified in the earlier checkpoint; the
+last-ready-pilot cancellation case was not retested in this clean combat
+entry.

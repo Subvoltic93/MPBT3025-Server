@@ -348,3 +348,15 @@ uses a separate receive path; the server currently retains no position state,
 and the native Mech collision volume/tolerance remains unknown. A future hit
 check must first follow the peer `0x41` visitor and reconstruct its position
 updates independently of the collision report.
+
+### Correction: peer-position visitor mapping remains unresolved
+
+The callback-table pointer at `0x6908e6ac` confirms `0x69073640` is visitor
+slot1. It does not by itself identify the command family that selects that
+slot. In particular, the older `solaris-session-2026-10-21.md` sentence
+calling it the server `0x41` visitor overstates the evidence. The trace so far
+shows combat-state3 position application and `Mech::SetPosition`, but the
+server peer-command object's receive dispatch and its field offsets have not
+been matched to this callback. Keep the server-side peer-position application
+path marked unknown; do not use client-reported hit coordinates to authorize
+damage until that mapping and native collision tolerance are recovered.

@@ -389,3 +389,30 @@ native pose state, but does not yet map the peer `0x41` application path or
 recover the 3D collision volume. The server still has no retained authoritative
 pose cache. Do not gate the hitpoint on these client reports until that receive
 path and collision tolerance are understood.
+
+## Continuation checkpoint: correcting the receive-path mapping
+
+Resumed from pushed `13316c0`. The only live process remains diagnostic server
+PID401100 on `127.0.0.1:15011`; no game clients are running. Inspected the
+native callback table and command vtables from the installed original
+`BTCombat.dll`. The pointer at `0x6908e6ac` confirms `0x69073640` occupies
+visitor slot1. That slot index alone does not establish that the peer key
+`0x41` command uses it. The function is combat-state3 and position-related,
+but key `0x41` decoder field offsets and visitor callback have not yet been
+connected with sufficient certainty. Older statements in the 2026-10-21
+handoff identifying it as the peer visitor are corrected in that handoff and
+in `combat-command-stream.md`.
+
+Additional factory trace: the `0x41` registration thunk at `0x6906f450`
+registers through `0x69073e40`; its factory constructs a 0x50-byte wrapper
+through `0x6906f1c0`, which initializes command storage then invokes decoder
+`0x6906f3d0`. The wrapper has outer and embedded vtable pointers, so treating
+the registration's `0x6908e284` value as the decoded command object's sole
+vtable was also unsafe. The next trace must follow the wrapper's generic
+receive/visitor call and identify which subobject it passes.
+
+No code or live behavior changed. Next trace the generic receive/visitor
+dispatch from the key `0x41` factory instance to the callback, including
+object field offsets. Until confirmed, do not add an authoritative hit gate
+based on reported hit points. No restart, new client, VCR flag, or `0x97`
+response was used.

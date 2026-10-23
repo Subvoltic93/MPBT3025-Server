@@ -345,6 +345,29 @@ native pose state, but does not yet map the peer <code>0x41</code> application p
 recover the 3D collision volume. The server still has no retained authoritative
 pose cache. Do not gate the hitpoint on these client reports until that receive
 path and collision tolerance are understood.</p>
+<h2>Continuation checkpoint: correcting the receive-path mapping</h2>
+<p>Resumed from pushed <code>13316c0</code>. The only live process remains diagnostic server
+PID401100 on <code>127.0.0.1:15011</code>; no game clients are running. Inspected the
+native callback table and command vtables from the installed original
+<code>BTCombat.dll</code>. The pointer at <code>0x6908e6ac</code> confirms <code>0x69073640</code> occupies
+visitor slot1. That slot index alone does not establish that the peer key
+<code>0x41</code> command uses it. The function is combat-state3 and position-related,
+but key <code>0x41</code> decoder field offsets and visitor callback have not yet been
+connected with sufficient certainty. Older statements in the 2026-10-21
+handoff identifying it as the peer visitor are corrected in that handoff and
+in <code>combat-command-stream.md</code>.</p>
+<p>Additional factory trace: the <code>0x41</code> registration thunk at <code>0x6906f450</code>
+registers through <code>0x69073e40</code>; its factory constructs a 0x50-byte wrapper
+through <code>0x6906f1c0</code>, which initializes command storage then invokes decoder
+<code>0x6906f3d0</code>. The wrapper has outer and embedded vtable pointers, so treating
+the registration's <code>0x6908e284</code> value as the decoded command object's sole
+vtable was also unsafe. The next trace must follow the wrapper's generic
+receive/visitor call and identify which subobject it passes.</p>
+<p>No code or live behavior changed. Next trace the generic receive/visitor
+dispatch from the key <code>0x41</code> factory instance to the callback, including
+object field offsets. Until confirmed, do not add an authoritative hit gate
+based on reported hit points. No restart, new client, VCR flag, or <code>0x97</code>
+response was used.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

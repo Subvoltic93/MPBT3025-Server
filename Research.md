@@ -23,7 +23,7 @@ The project layout borrows the broad separation used by [KenzHuman’s `mpbt-ser
 
 **Implemented but not fully validated end to end:** character creation persistence semantics, House chat, full campaign navigation, economy screens, authoritative room-count behavior across reconnect and multi-room cases, and stable reconnect behavior.
 
-**Unknown or incomplete:** the meaning of every field in planet-state records; the client’s complete split-buffer reassembly behavior; full Team chat semantics; authoritative movement, hit detection, damage, destruction, match end, score, rank, and rewards.
+**Unknown or incomplete:** the meaning of every field in planet-state records; the client’s complete split-buffer reassembly behavior; full Team chat semantics; the native key `0x41` peer-position receive visitor and authoritative pose handling; hit tolerance and geometry; authoritative movement, hit detection, damage, destruction, match end, score, rank, and rewards.
 
 ## Room roster and side labels
 

@@ -18,8 +18,9 @@ The goal is a usable local multiplayer server with a clear boundary between conf
 
 1. Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.
 2. Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.
-3. Extend the verified diagnostic assignment/fire path into server hit validation and remaining-armor tracking. Preserve separate component/internal/destruction rules and recover the piloting-target calculation. Clear mutual sight, target selection and targeted laser relay in both directions are now demonstrated. New native standalone-fire delivery remains pending; the follow-up shots were position/fire batches.
-4. Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.
+3. Trace the native key `0x41` peer-position receive wrapper to its visitor and reconcile decoded fields with the client position command. `0x69073640` is a position-related visitor callback, but its use for key `0x41` is not established; the older handoff claim was corrected. Preserve client reports as untrusted while recovering server pose handling and hit tolerance.
+4. Extend the verified diagnostic assignment/fire path into server hit validation and remaining-armor tracking only after peer pose reception and hit geometry are understood. Preserve separate component/internal/destruction rules and recover the piloting-target calculation. Clear mutual sight, target selection and targeted laser relay in both directions are now demonstrated. New native standalone-fire delivery remains pending; the follow-up shots were position/fire batches.
+5. Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.
 
 ## Completion criteria
 

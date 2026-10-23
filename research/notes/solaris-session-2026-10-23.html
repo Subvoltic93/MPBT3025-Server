@@ -296,6 +296,27 @@ build succeeds (<code>runtime/mpbt3025-armor-probe-final</code>). Live server401
 saved rooms/seats cleared. Documentation is refreshed for the bounded live
 success and remaining authoritative/full-damage/result gaps. Push this checkpoint
 with the implementation and protocol-only capture fixture.</p>
+<h2>Continuation checkpoint: position and weapon validation</h2>
+<p>Resumed from pushed commit <code>6a8164b</code> on a clean <code>main</code> checkout. Only the
+isolated armor-probe server PID401100 is listening on <code>127.0.0.1:15011</code>; no
+BT3025 clients are running and no other listeners are being changed. Current
+work is offline native analysis of position serialization, range, and weapon
+timing so the next live trial can test a constrained server-side combat path.</p>
+<p>Native position wire <code>0x27</code> carries two signed four-digit coordinates first.
+The signed reader subtracts <code>85^4/2</code>, matching <code>combatWriter.coordinate</code>;
+captured live reports decode to <code>(0,10000)</code> and <code>(0,-10000)</code>, the launch
+coordinates for the mirrored diagnostic spawns. <code>FillMech</code> multiplies setup
+coordinates by <code>0.01</code>, so this representation agrees with the 200m separation.
+The client includes position before each sampled shot, but the relay currently
+does not retain it on the server. The six medium-laser values at weapon object
+<code>+0x34..+0x48</code> are range bands <code>[45,90,135,180,225,270]</code>; their role as
+accuracy bands versus a hard range limit has not been established. No range
+gate or damage rule was added from that assumption. The live armor diagnostic
+server and no-client state are unchanged.</p>
+<p>Next inspect the weapon range/cadence consumers and decode the fire report's
+collision coordinates. A server check should be based on those native meanings,
+then tested with at most the two existing prefixes. Before enabling any new
+live behavior, record another checkpoint.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

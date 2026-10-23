@@ -354,6 +354,20 @@ server tests. Local screenshots remain in runtime, not the public repository.</p
 weapon cadence and correct piloting-target updates. Preserve this verified
 assignment-before-fire order while extending damage; the diagnostic does not
 establish authoritative hits or match completion.</p>
+<h2>Position and range follow-up</h2>
+<p>Native client position command <code>0x27</code> begins with signed four-digit X and Y.
+The decoder subtracts <code>85^4/2</code>, the inverse of the setup encoder. Captured
+live position reports decode to <code>(0,10000)</code> and <code>(0,-10000)</code>, matching the
+mirrored diagnostic launch coordinates; <code>FillMech</code> scales those coordinates
+by <code>0.01</code>, producing the verified 200m pair spacing. The client sends position
+alongside the sampled fire report, but the server does not retain positions.</p>
+<p><code>CWeapon::Init</code> copies six medium-laser range values to weapon object
+<code>+0x34..+0x48</code>: <code>[45,90,135,180,225,270]</code>. The use of those values as accuracy
+bands or as a hard firing range has not yet been confirmed, so they do not yet
+support a server range gate. The fire visitor consumes additional reported
+coordinates, but their wire offsets and relation to collision geometry still
+need to be matched from the native reader/writer and live packets. Continue
+with those consumers before changing the diagnostic's eligibility rules.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

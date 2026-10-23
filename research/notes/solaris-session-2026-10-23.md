@@ -339,5 +339,20 @@ isolated armor-probe server PID401100 is listening on `127.0.0.1:15011`; no
 BT3025 clients are running and no other listeners are being changed. Current
 work is offline native analysis of position serialization, range, and weapon
 timing so the next live trial can test a constrained server-side combat path.
-No code or live state changed yet. Before enabling any new live behavior,
-record another checkpoint and keep the client ceiling at two.
+
+Native position wire `0x27` carries two signed four-digit coordinates first.
+The signed reader subtracts `85^4/2`, matching `combatWriter.coordinate`;
+captured live reports decode to `(0,10000)` and `(0,-10000)`, the launch
+coordinates for the mirrored diagnostic spawns. `FillMech` multiplies setup
+coordinates by `0.01`, so this representation agrees with the 200m separation.
+The client includes position before each sampled shot, but the relay currently
+does not retain it on the server. The six medium-laser values at weapon object
+`+0x34..+0x48` are range bands `[45,90,135,180,225,270]`; their role as
+accuracy bands versus a hard range limit has not been established. No range
+gate or damage rule was added from that assumption. The live armor diagnostic
+server and no-client state are unchanged.
+
+Next inspect the weapon range/cadence consumers and decode the fire report's
+collision coordinates. A server check should be based on those native meanings,
+then tested with at most the two existing prefixes. Before enabling any new
+live behavior, record another checkpoint.

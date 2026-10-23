@@ -38,3 +38,9 @@ The native trial used two pilots in city 1 and confirmed one-pilot Alpha counts/
 Implementation details and historical traces are indexed in the dated notes. The [game manual](reference/manual/Multiplayer-Battletech-3025_Manual_Win_EN.pdf) and [SDS](reference/sds/btech3025-sds-v1.1a.doc) are stored under `reference/` and listed on the project files page. Packet summaries under `runtime/traces/` and campaign snapshots under `runtime/` are local development output, ignored by version control. Utilities that inspect supplied client files require `MPBT3025_CLIENT_ROOT`; the original client files and third-party reference checkout remain elsewhere.
 
 When investigating a regression, record the exact server flags, a clean world snapshot, client-visible result, and the corresponding trace. Keep decoded observations separate from interpretation, and promote an experimental flag only after a repeatable client trial.
+
+## Fire selection and standalone-event follow-up
+
+Native fire writers and receiver visitor establish weapon slot and target-plus-one references. Targeted synthetic fixtures execute the original serializers; the server checks slots against its stock COM-4D initialization and targets against the launched room roster. This prevents invalid native object references but does not validate geometry or damage.
+
+The October 23 live trial found a 36-byte standalone fire command that the old position-first relay dropped. A later combined position/fire event passed the new reference checks. The parser now accepts standalone fire and complete batches, rejects unknown/truncated tails, and retains the position-only preparation requirement. The exact standalone capture has active-room relay regression coverage. Standalone delivery after this correction is capture-replayed in tests; a new native-client standalone relay trial remains pending. No targeted hit or receiving-client damage was established.

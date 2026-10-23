@@ -2,6 +2,10 @@ package protocol
 
 import "fmt"
 
+// CombatCommandoWeaponCount is the stock COM-4D loadout from FakeACat:
+// medium laser, SRM-6, and flamer. Native combat setup currently allows only it.
+const CombatCommandoWeaponCount = 3
+
 // CombatPilot describes a starter COM-4D in the experimental native setup.
 // Combat entity IDs and teams use the combat DLL's own numbering; these are
 // separate from the shell's one-based seats and Alpha/Beta headings.

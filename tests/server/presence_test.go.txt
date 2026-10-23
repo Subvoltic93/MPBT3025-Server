@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -68,7 +70,7 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub.relayCombatPosition(alpha, frame)
+	hub.relayCombatCommands(alpha, frame)
 	if len(betaSent) != 0 {
 		t.Fatal("relayed position before both clients prepared")
 	}
@@ -80,7 +82,7 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	if _, precheckErr = protocol.CombatPeerPosition(0, precheck); precheckErr != nil {
 		t.Fatalf("captured native position cannot relay: %v, %x", precheckErr, precheck)
 	}
-	hub.relayCombatPosition(alpha, frame)
+	hub.relayCombatCommands(alpha, frame)
 	if len(alphaSent) != 0 || len(otherSent) != 0 || len(betaSent) != 1 {
 		t.Fatalf("wrong room-scoped recipients: alpha=%d beta=%d other=%d", len(alphaSent), len(betaSent), len(otherSent))
 	}
@@ -100,7 +102,7 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hub.relayCombatPosition(alpha, shotFrame)
+	hub.relayCombatCommands(alpha, shotFrame)
 	if len(alphaSent) != 0 || len(otherSent) != 0 || len(betaSent) != 3 {
 		t.Fatal("combined position and fire did not stay within the active room")
 	}
@@ -118,12 +120,12 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	}
 	bad := append([]byte(nil), frame...)
 	bad[10] ^= 1
-	hub.relayCombatPosition(alpha, bad)
+	hub.relayCombatCommands(alpha, bad)
 	if len(betaSent) != 3 {
 		t.Fatal("relayed corrupt native position")
 	}
 	hub.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 2}}
-	hub.relayCombatPosition(alpha, frame)
+	hub.relayCombatCommands(alpha, frame)
 	if len(betaSent) != 3 || len(otherSent) != 0 {
 		t.Fatal("relayed a pilot after it left the launched room")
 	}
@@ -316,5 +318,94 @@ func TestSolarisStagingRosterAndCountStayWithinCity(t *testing.T) {
 	hub.remove(second)
 	if len(firstMessages) != 0 {
 		t.Fatal("another city's disconnect changed the first city's roster")
+	}
+}
+
+func TestCombatFireRejectsUnknownRoomTargetsAndWeaponSlots(t *testing.T) {
+	// Captured native shot contains no target and uses the first weapon slot.
+	body, err := hex.DecodeString("0000004f1b21274b4c62634b5835422234234b4b4b4b4b4b4b4d4f4b4b4b4b4a734b4b4b4b4b4b212124462b21212121224b4b4b4b4b4b4b4c62634b5835422234234b582d554b4c606c4b4c61752224714c1b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands, err := protocol.ParseClientCombatData(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roster := map[string]byte{"Alpha": 0, "Beta": 1}
+	for _, tc := range []struct {
+		name         string
+		slot, target byte
+		allowed      bool
+	}{
+		{"untargeted laser", 0, 0, true},
+		{"rostered target", 0, 2, true},
+		{"last stock weapon", 2, 2, true},
+		{"unknown target", 0, 3, false},
+		{"absent weapon", 3, 2, false},
+		{"large weapon", 84, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fire := append([]byte(nil), commands[37:]...)
+			fire[1], fire[2] = '!'+tc.slot, '!'+tc.target
+			got, err := combatFireForRoom(0, roster, fire)
+			if !tc.allowed {
+				if err == nil || got.ID != 0 {
+					t.Fatal("invalid fire references were relayed")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			peer, err := protocol.CombatPeerFire(0, fire)
+			if err != nil || !bytes.Equal(got.Body, protocol.CombatData(peer).Body) {
+				t.Fatal("valid shot changed during validation")
+			}
+		})
+	}
+}
+
+func TestStandaloneCombatFireRelaysOnlyAfterReadyToRoomPeer(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-live-standalone-fire.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		ClientBodyHex string `json:"client_body_hex"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	body, err := hex.DecodeString(fixture.ClientBodyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := newSessionHub()
+	hub.experimentalCombatInit = true
+	hub.combatEntities = map[int]map[string]byte{1: {"Alpha": 0, "Beta": 1}, 2: {"Other": 0}}
+	hub.combatActive = map[int]bool{1: false}
+	var self, peer, elsewhere []protocol.PDU
+	alpha := &liveSession{sendGamePDU: func(p protocol.PDU) error { self = append(self, p); return nil }}
+	beta := &liveSession{sendGamePDU: func(p protocol.PDU) error { peer = append(peer, p); return nil }}
+	other := &liveSession{sendGamePDU: func(p protocol.PDU) error { elsewhere = append(elsewhere, p); return nil }}
+	hub.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+	hub.sessions[beta] = planetPresence{callSign: "Beta", location: state.Location{RoomID: 1}}
+	hub.sessions[other] = planetPresence{callSign: "Other", location: state.Location{RoomID: 2}}
+	hub.relayCombatCommands(alpha, body)
+	if len(peer) != 0 {
+		t.Fatal("fire relayed before native Ready")
+	}
+	hub.combatActive[1] = true
+	hub.relayCombatCommands(alpha, body)
+	if len(self) != 0 || len(elsewhere) != 0 || len(peer) != 1 {
+		t.Fatal("standalone shot did not reach only its active-room peer")
+	}
+	command, err := protocol.ParseClientCombatData(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := combatFireForRoom(0, hub.combatEntities[1], command)
+	if err != nil || !bytes.Equal(peer[0].Body, want.Body) {
+		t.Fatal("standalone shot changed during relay")
 	}
 }

@@ -23,8 +23,10 @@
 <p>Historical local paths in this document are relative to the original workspace root. Original client assets, client-derived research, and visual evidence remain in the separate workspace-root <code>client/</code> directory and are not included in this server project.</p>
 <p>Static and executable-fixture evidence from the supplied September 2001
 BTCombat.dll; preferred image base 0x69000000. The server now encodes the
-command envelope and a controlled stock COM-4D setup; live loading remains
-to be verified.</p>
+command envelope and a controlled stock COM-4D setup. Two-client native combat
+entry, position relay and fire relay have been demonstrated. Standalone fire
+parsing and reference validation now have captured-packet/native-fixture tests;
+authoritative hit/damage and match completion remain unfinished.</p>
 <p><code>ReceiveCombatData</code> (0x6905cd60) forwards the PDU body and length to
 0x690755c0. The bounded stream is processed by 0x69075060 before dispatch.
 The command type reader (0x69074b30) subtracts 0x21 from one wire byte and
@@ -76,8 +78,8 @@ TitleCommand calls <code>FillReality</code> at 0x69057a60, which ends by calling
 <code>PrepareForCombat</code> at 0x69056160. The ready callback calls exported
 <code>ReadyForCombat</code> at 0x690570e0, including <code>GraphicsManager::EnterCombat</code>.
 Thus the stream has explicit preparation and entry commands beyond the
-shell-level 0x80 message. These are concrete missing steps to test when
-resolving the loading splash; full initialization remains unverified.</p>
+shell-level 0x80 message. The later executable fixtures and live preparation
+barrier trial below established the required initialization sequence.</p>
 <h2>Encoding details recovered so far</h2>
 <ul>
 <li>Small values and command types use one character with bias 0x21.</li>
@@ -101,7 +103,7 @@ which invokes the no-op decoder 0x6906b7f0. Its payload therefore appears
 empty after the type byte; the native writer fixture confirms exactly <code>_</code>.</p>
 <p>Native fixtures now cover Title, NewMech, Ready, and stock COM-4D equipment.
 A controlled setup trial is behind <code>-experimental-combat-init</code>; it is disabled
-by default and has no movement/damage simulation yet.</p>
+by default. It supports peer position/fire relay, with no authoritative hit/damage simulation.</p>
 <h2>Stream checksum and title layout follow-up</h2>
 <p>The checksum routine at 0x69075200 is the same 19-bit LFSR described in
 <code>../../../../MPBT3025/references/solaris-protocol-reference/solaris_server.py</code> (which documents the
@@ -174,8 +176,8 @@ release. Live barrier verification PASSED: both setup packets at13:55:54, both
 prepared and Ready broadcast at13:55:58. Captures
 client/.runtime/captures/barrier-released-{a,b}.png show Stand By gone and
 active match clocks on both clients, with no native crash. The shell continues using
-one-based seats and teams1/2. Movement relay and combat simulation remain
-unimplemented; cockpit rendering alone does not establish playable combat.</p>
+one-based seats and teams1/2. At this checkpoint movement relay was still pending (see the later trials below);
+cockpit rendering alone does not establish a complete multiplayer battle loop.</p>
 <p>Native position relay: client command wire0x27 (key6, writer0x6906f700)
 contains signedX4, signedY4, unsigned3, seven signed3 and unsigned4 fields.
 Server position wire0x62 (key0x41, writer0x6906f350) contains entityID1,
@@ -185,8 +187,7 @@ kinds proving the exact shared wire bytes. CombatPeerPosition validates the
 client command and inserts the sender entity from the launched room roster.
 Live relay trial at14:05:11 passed: both clients stayed in combat and peer
 indicator changed when Subvoltic moved forward at20kph. See the Solaris session
-checkpoint for process IDs, logs, traces and captures. Damage and fire handling
-remain unimplemented.</p>
+checkpoint for process IDs, logs, traces and captures. This position trial did not yet exercise fire; see the following weapon-event trial.</p>
 <p>Weapon event: a native Left Alt shot is batched after position in the same
 client0x81 frame. The second command is36-byte wire0x2b (client key0x0a,
 writer0x69070c20). Server key0x44, writer0x69070810, serializes36-byte
@@ -198,6 +199,32 @@ the combined client frame and a server fire packet to the peer without a
 native crash. The peer effect and damage were not visually confirmed.
 Receiver visitor0x69073770 includes a local-target branch; further work must
 validate targets and handle damage/results authoritatively.</p>
+<h2>October 23: fire references and standalone batches</h2>
+<p>Client writer <code>0x69070c20</code> writes type <code>+</code>, weapon slot (whole object <code>+0x30</code>),
+then target-plus-one (<code>+0x31</code>). Server writer <code>0x69070810</code> inserts shooter at
+<code>+0x30</code>, placing weapon at <code>+0x31</code> and target at <code>+0x32</code>. Receiver visitor
+<code>0x69073770</code> indexes the shooter's weapon and subtracts one from the target
+before a Mech lookup. Zero is untargeted. The target remains a client report;
+its presence alone cannot prove a hit or damage.</p>
+<p>Synthetic overrides in <code>native-combat-fixture.py</code> now generate targeted client
+and server fixtures for slot 2, target entity 1. They execute the original
+writers and round-trip through native envelope preprocessing. The Go mapping
+matches those bytes. The server restricts stock COM-4D slots to 0..2 and
+nonzero targets to entities in the launched room; it still trusts reported
+geometry, weapon timing and ammunition.</p>
+<p>A live shot at 12:33:10 arrived as a standalone 36-byte <code>+</code> command, slot 0,
+target -1. The old parser required position first and silently dropped it.
+The 12:34:13 combined position/fire packet was accepted by the reference
+checks (slot 2, untargeted) and relayed. The parser now accepts standalone fire
+or an optional leading 37-byte position followed by complete 36-byte fires.
+Unknown/truncated tails reject the entire batch. Standalone fire never counts
+as a preparation acknowledgement. The captured standalone packet exercises
+the real envelope parser and room-scoped relay in regression tests; multiple
+fires are tested as complete batches, not claimed as a new live observation.</p>
+<p>No opponent lock, targeted shot, projectile impact or receiving-client damage
+was established in this trial. Camera motion during focus complicated aiming.
+Next establish clear mutual sight and correlate a reported target with peer
+state; do not apply guessed damage based only on a target field.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

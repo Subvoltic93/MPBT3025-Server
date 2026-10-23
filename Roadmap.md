@@ -8,7 +8,7 @@ The goal is a usable local multiplayer server with a clear boundary between conf
 | Pilot and campaign state | Partial | JSON persistence, pilot records, Solaris locations, rooms, seats, and prototype campaign rules exist. Creation and progression need full client-screen verification. |
 | Solaris staging and occupants | Partial | Two-client counts, Alpha/Beta labels, Back/rejoin and settled rosters were reconfirmed. Cross-city isolation is fixed and regression-tested; native cross-city/reconnect cases remain. |
 | Mission readiness and launch | Demonstrated | Seat selection, readiness/cancellation, countdown, preparation barrier, and native combat entry were reconfirmed with two clients on October 23. |
-| Combat command relay | Partial | Room-scoped position and fire relay works in recorded trials. The server does not yet own authoritative simulation. |
+| Combat command relay | Partial | Room-scoped position/fire relay is demonstrated. Standalone/batched fire parsing and stock weapon/room target checks have native-fixture and captured-packet coverage. Geometry, ammunition and damage remain unauthoritative. |
 | Combat resolution and results | Next | Validate targeted hit messages, apply damage consistently, detect destruction/end state, and return native results. |
 | Campaign services and economy | Later | Connect battle results to rank, credits, ownership, salary, and client-facing screens. |
 | Persistence adapter | Later | Choose a storage engine and migration approach only when JSON persistence no longer meets the server needs; keep storage behind a narrow adapter boundary. The `src/db/` files are placeholders today. |
@@ -18,7 +18,7 @@ The goal is a usable local multiplayer server with a clear boundary between conf
 
 1. Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.
 2. Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.
-3. Trace a controlled shot through the client/server command stream, determine whether the client reports a hit or only a fire event, and identify the smallest server-owned damage step.
+3. Recheck standalone-fire delivery in a new native trial, establish clear mutual sight and a reported target, and distinguish lock/aim/fire reports from receiving-client damage. Use the recovered target-plus-one layout and then identify the smallest server-owned hit/damage step.
 4. Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.
 
 ## Completion criteria

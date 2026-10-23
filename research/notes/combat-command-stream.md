@@ -4,8 +4,10 @@ Historical local paths in this document are relative to the original workspace r
 
 Static and executable-fixture evidence from the supplied September 2001
 BTCombat.dll; preferred image base 0x69000000. The server now encodes the
-command envelope and a controlled stock COM-4D setup; live loading remains
-to be verified.
+command envelope and a controlled stock COM-4D setup. Two-client native combat
+entry, position relay and fire relay have been demonstrated. Standalone fire
+parsing and reference validation now have captured-packet/native-fixture tests;
+authoritative hit/damage and match completion remain unfinished.
 
 `ReceiveCombatData` (0x6905cd60) forwards the PDU body and length to
 0x690755c0. The bounded stream is processed by 0x69075060 before dispatch.
@@ -27,8 +29,8 @@ TitleCommand calls `FillReality` at 0x69057a60, which ends by calling
 `PrepareForCombat` at 0x69056160. The ready callback calls exported
 `ReadyForCombat` at 0x690570e0, including `GraphicsManager::EnterCombat`.
 Thus the stream has explicit preparation and entry commands beyond the
-shell-level 0x80 message. These are concrete missing steps to test when
-resolving the loading splash; full initialization remains unverified.
+shell-level 0x80 message. The later executable fixtures and live preparation
+barrier trial below established the required initialization sequence.
 
 ## Encoding details recovered so far
 
@@ -54,7 +56,7 @@ empty after the type byte; the native writer fixture confirms exactly `_`.
 
 Native fixtures now cover Title, NewMech, Ready, and stock COM-4D equipment.
 A controlled setup trial is behind `-experimental-combat-init`; it is disabled
-by default and has no movement/damage simulation yet.
+by default. It supports peer position/fire relay, with no authoritative hit/damage simulation.
 
 ## Stream checksum and title layout follow-up
 
@@ -137,8 +139,8 @@ release. Live barrier verification PASSED: both setup packets at13:55:54, both
 prepared and Ready broadcast at13:55:58. Captures
 client/.runtime/captures/barrier-released-{a,b}.png show Stand By gone and
 active match clocks on both clients, with no native crash. The shell continues using
-one-based seats and teams1/2. Movement relay and combat simulation remain
-unimplemented; cockpit rendering alone does not establish playable combat.
+one-based seats and teams1/2. At this checkpoint movement relay was still pending (see the later trials below);
+cockpit rendering alone does not establish a complete multiplayer battle loop.
 
 
 Native position relay: client command wire0x27 (key6, writer0x6906f700)
@@ -150,8 +152,7 @@ kinds proving the exact shared wire bytes. CombatPeerPosition validates the
 client command and inserts the sender entity from the launched room roster.
 Live relay trial at14:05:11 passed: both clients stayed in combat and peer
 indicator changed when Subvoltic moved forward at20kph. See the Solaris session
-checkpoint for process IDs, logs, traces and captures. Damage and fire handling
-remain unimplemented.
+checkpoint for process IDs, logs, traces and captures. This position trial did not yet exercise fire; see the following weapon-event trial.
 
 
 Weapon event: a native Left Alt shot is batched after position in the same
@@ -165,3 +166,35 @@ the combined client frame and a server fire packet to the peer without a
 native crash. The peer effect and damage were not visually confirmed.
 Receiver visitor0x69073770 includes a local-target branch; further work must
 validate targets and handle damage/results authoritatively.
+
+
+## October 23: fire references and standalone batches
+
+Client writer `0x69070c20` writes type `+`, weapon slot (whole object `+0x30`),
+then target-plus-one (`+0x31`). Server writer `0x69070810` inserts shooter at
+`+0x30`, placing weapon at `+0x31` and target at `+0x32`. Receiver visitor
+`0x69073770` indexes the shooter's weapon and subtracts one from the target
+before a Mech lookup. Zero is untargeted. The target remains a client report;
+its presence alone cannot prove a hit or damage.
+
+Synthetic overrides in `native-combat-fixture.py` now generate targeted client
+and server fixtures for slot 2, target entity 1. They execute the original
+writers and round-trip through native envelope preprocessing. The Go mapping
+matches those bytes. The server restricts stock COM-4D slots to 0..2 and
+nonzero targets to entities in the launched room; it still trusts reported
+geometry, weapon timing and ammunition.
+
+A live shot at 12:33:10 arrived as a standalone 36-byte `+` command, slot 0,
+target -1. The old parser required position first and silently dropped it.
+The 12:34:13 combined position/fire packet was accepted by the reference
+checks (slot 2, untargeted) and relayed. The parser now accepts standalone fire
+or an optional leading 37-byte position followed by complete 36-byte fires.
+Unknown/truncated tails reject the entire batch. Standalone fire never counts
+as a preparation acknowledgement. The captured standalone packet exercises
+the real envelope parser and room-scoped relay in regression tests; multiple
+fires are tested as complete batches, not claimed as a new live observation.
+
+No opponent lock, targeted shot, projectile impact or receiving-client damage
+was established in this trial. Camera motion during focus complicated aiming.
+Next establish clear mutual sight and correlate a reported target with peer
+state; do not apply guessed damage based only on a target field.

@@ -53,36 +53,89 @@ func CombatPeerPosition(entityID byte, clientCommand []byte) ([]byte, error) {
 	return command, nil
 }
 
-// ClientCombatPosition extracts the regular position command. A weapon shot
-// appends a 36-byte native fire command (key 0x0a) to the same client frame;
-// its fields still need combat simulation, but the leading position remains
-// useful to the peer.
+// ClientCombatBatch is the supported part of a native client stream: an
+// optional leading position followed by zero or more weapon fire reports.
+type ClientCombatBatch struct {
+	Position []byte
+	Fires    [][]byte
+}
+
+// ParseClientCombatCommands accepts complete supported commands only. Live
+// traffic contains both standalone fire and position-plus-fire frames.
+// Rejecting unknown/truncated tails prevents forwarding a partial batch.
+func ParseClientCombatCommands(commands []byte) (ClientCombatBatch, error) {
+	var batch ClientCombatBatch
+	if len(commands) == 0 {
+		return batch, fmt.Errorf("empty native combat command stream")
+	}
+	if commands[0] == '\x27' {
+		if len(commands) < 37 {
+			return ClientCombatBatch{}, fmt.Errorf("truncated native position command")
+		}
+		for _, digit := range commands[1:37] {
+			if digit < '!' || digit > 'u' {
+				return ClientCombatBatch{}, fmt.Errorf("invalid native position digit")
+			}
+		}
+		batch.Position, commands = commands[:37], commands[37:]
+	}
+	for len(commands) > 0 {
+		if len(commands) < 36 {
+			return ClientCombatBatch{}, fmt.Errorf("truncated native fire command")
+		}
+		if _, err := ParseClientCombatFire(commands[:36]); err != nil {
+			return ClientCombatBatch{}, err
+		}
+		batch.Fires = append(batch.Fires, commands[:36])
+		commands = commands[36:]
+	}
+	return batch, nil
+}
+
+// ClientCombatPosition extracts a position for the native preparation barrier;
+// a standalone weapon report cannot establish that the client is prepared.
 func ClientCombatPosition(commands []byte) ([]byte, bool) {
-	if len(commands) == 37 && commands[0] == '\x27' {
-		return commands, true
-	}
-	if len(commands) == 73 && commands[0] == '\x27' && commands[37] == '+' {
-		return commands[:37], true
-	}
-	return nil, false
+	batch, err := ParseClientCombatCommands(commands)
+	return batch.Position, err == nil && batch.Position != nil
 }
 
 // CombatPeerFire converts the client's native fire report (key 0x0a) into
 // the corresponding server command (key 0x44). The server writer adds the
 // authenticated firing entity and omits the client's final one-byte field.
 func CombatPeerFire(entityID byte, clientFire []byte) ([]byte, error) {
-	if entityID >= 85 || len(clientFire) != 36 || clientFire[0] != '+' {
+	if entityID >= 85 {
 		return nil, fmt.Errorf("invalid native client fire command or entity %d", entityID)
 	}
-	for _, digit := range clientFire[1:] {
-		if digit < '!' || digit > 'u' {
-			return nil, fmt.Errorf("invalid native fire digit")
-		}
+	if _, err := ParseClientCombatFire(clientFire); err != nil {
+		return nil, err
 	}
 	command := make([]byte, 0, 36)
 	command = append(command, 'e', entityID+'!')
 	command = append(command, clientFire[1:35]...)
 	return command, nil
+}
+
+// CombatFireSelection identifies the references in a native client fire
+// report. TargetEntity is -1 for an untargeted shot, otherwise a zero-based
+// combat entity ID. This is a client report, not evidence of a hit.
+type CombatFireSelection struct {
+	WeaponSlot   byte
+	TargetEntity int
+}
+
+// ParseClientCombatFire follows writer 0x69070c20. Its first two payload
+// digits become server object fields +0x31 (weapon slot) and +0x32 (target).
+// Visitor 0x69073770 subtracts one from the target before looking up a Mech.
+func ParseClientCombatFire(command []byte) (CombatFireSelection, error) {
+	if len(command) != 36 || command[0] != '+' {
+		return CombatFireSelection{}, fmt.Errorf("invalid native client fire command")
+	}
+	for _, digit := range command[1:] {
+		if digit < '!' || digit > 'u' {
+			return CombatFireSelection{}, fmt.Errorf("invalid native fire digit")
+		}
+	}
+	return CombatFireSelection{WeaponSlot: command[1] - '!', TargetEntity: int(command[2]-'!') - 1}, nil
 }
 
 // ParseClientCombatData verifies the DLL's outbound stream. Unlike server

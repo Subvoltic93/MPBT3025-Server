@@ -53,7 +53,7 @@
 <tr>
 <td>Combat command relay</td>
 <td>Partial</td>
-<td>Room-scoped position and fire relay works in recorded trials. The server does not yet own authoritative simulation.</td>
+<td>Room-scoped position/fire relay is demonstrated. Standalone/batched fire parsing and stock weapon/room target checks have native-fixture and captured-packet coverage. Geometry, ammunition and damage remain unauthoritative.</td>
 </tr>
 <tr>
 <td>Combat resolution and results</td>
@@ -81,7 +81,7 @@
 <ol>
 <li>Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.</li>
 <li>Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.</li>
-<li>Trace a controlled shot through the client/server command stream, determine whether the client reports a hit or only a fire event, and identify the smallest server-owned damage step.</li>
+<li>Recheck standalone-fire delivery in a new native trial, establish clear mutual sight and a reported target, and distinguish lock/aim/fire reports from receiving-client damage. Use the recovered target-plus-one layout and then identify the smallest server-owned hit/damage step.</li>
 <li>Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.</li>
 </ol>
 <h2>Completion criteria</h2>

@@ -1,0 +1,25 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "kind": "server-fire",
+  "fields": {
+    "0x30": 1,
+    "0x31": 2,
+    "0x32": 2,
+    "0x34": 2,
+    "0x38": -3,
+    "0x3c": 4,
+    "0x40": -5,
+    "0x44": 6,
+    "0x48": 7,
+    "0x4c": -8,
+    "0x50": 9,
+    "0x54": -10
+  },
+  "strings": {},
+  "vectors": {},
+  "command_hex": "652223232121234b4b484b4b4f4b4b4b464b4b4b512121284b4b4b434b4b4b544b4b4b41",
+  "server_frame_hex": "1b21652223232121234b4b484b4b4f4b4b4b464b4b4b512121284b4b4b434b4b4b544b4b4b4122623f1b",
+  "native_decode_matches": true,
+  "client_checksum": 117670,
+  "server_checksum": 391594
+}

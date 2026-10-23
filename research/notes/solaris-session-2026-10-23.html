@@ -88,6 +88,61 @@ responses were used.</p>
 <li>Cross-city isolation is covered by the new regression. A native trial across cities, reconnect and same-side assignment remains pending.</li>
 <li>Continue combat work with a controlled targeted shot; authoritative hit/damage and match completion remain unfinished.</li>
 </ul>
+<h2>Fire reference investigation checkpoint</h2>
+<p>Continued from the same clean checkout and idle 15011 server. The native client
+fire writer 0x69070c20 emits weapon slot then target-plus-one; server writer
+0x69070810 inserts shooter before those fields. Visitor 0x69073770 uses server
+object +0x31 as weapon slot and +0x32 minus one as target entity. Zero means
+untargeted. The previous relay checked base85 digits but allowed arbitrary
+weapon/target references through to native object lookups.</p>
+<p>Added a fire-selection parser and room validation: stock COM-4D slots 0..2,
+and either an untargeted shot or a target in the launched room roster. The
+existing authenticated shooter and active-room checks remain. Native fixture
+tool now accepts synthetic weapon/target overrides; two targeted fixtures
+prove the client and server serializers agree. Full Go suite passes, including
+invalid target/weapon and malformed command cases. Per-shot logs identify slot
+and target without claiming a hit. Built <code>runtime/mpbt3025-fire-selection</code>.</p>
+<p>Next live trial uses a cloned world, the same arrival-a/b prefixes, at most
+two clients, installed game working directories and nice priority 10. No
+VCR flags or populated 0x97 responses. Test targeted firing; do not infer hit
+or damage from the target field alone.</p>
+<h2>Live fire checkpoint — standalone event found</h2>
+<p>Fire-validation trial server 393795, clients 393796/393802 (arrival-a/Subvoltic
+and arrival-b/BetaPilot), shell windows 0x4a0000f/0x4e0000f. Native combat
+windows are 0x4a0000b/0x4e0000b; shell windows become unmapped during combat.
+Both prepared and entered combat at 12:29:08 local log time. Focused keyboard
+input and desktop captures used only the two existing clients.</p>
+<p>At 12:33:10 Subvoltic emitted a standalone 36-byte fire command, weapon slot 0,
+no target. The old relay silently dropped it because it only accepted a leading
+37-byte position. At 12:34:13 a combined position+fire packet reached the new
+reference checks and relayed with slot 2, target -1 (untargeted). This confirms
+valid live fire passes reference validation; it does not confirm a hit.</p>
+<p>Added complete supported-command batching: optional leading position plus one
+or more fire commands, including standalone fire. Unknown/truncated tails reject
+the complete batch; a standalone shot cannot release the preparation barrier.
+The captured standalone event is stored as a small protocol fixture; integration
+coverage verifies active-room-only delivery. Native targeted fixtures and
+malformed/unknown weapon/target tests pass with the complete Go suite.</p>
+<p>Mouse movement during focus changed the aim in the first trial. Toggled HUD
+cursor mode to settle the view, then returned to mouse mode for firing. No
+opponent lock, targeted shot or receiving-client damage was established. Keep
+these facts distinct from successful valid-fire relay. The clocks expired
+without a server-owned result, as expected for the unfinished match loop.</p>
+<h2>Fire batching final checkpoint</h2>
+<p>Stopped only the arrival-a/b Wine servers after recording the first trial.
+Both pilots' saved RoomIDs are zero. Rebuilt the final standalone/batch-aware
+server and restarted only 15011: PID 395091, binary
+<code>runtime/mpbt3025-fire-selection</code>, world
+<code>runtime/world-test-15011-fire-selection.json</code>, log
+<code>runtime/logs/fire-selection-batching.log</code>, traces
+<code>runtime/traces/fire-selection-batching</code>. No clients are running. The final
+batching change is validated by the captured native event/integration tests;
+it has not yet been repeated as a new live standalone-delivery trial.</p>
+<p>Captures and keyboard-only aim helper remain local under <code>runtime/</code>; no client
+screenshots or binaries are committed. Public fixtures contain serializer or
+captured protocol bytes only. Full Go suite, server build and site generation
+are the completion checks. Continue with controlled targeting/clear sight;
+no hit/damage/result implementation is claimed by these changes.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

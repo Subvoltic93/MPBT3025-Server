@@ -27,6 +27,11 @@
 <li><code>summarize-trace.py</code> summarizes packet trace logs.</li>
 </ul>
 <p>Client-dependent utilities read from the separate client directory and do not copy client assets into this project.</p>
+<p>For targeted synthetic serializer fixtures (no live client injection), run:</p>
+<pre><code class="language-sh">python3 scripts/native-combat-fixture.py fire --weapon-slot 2 --target-entity 1
+python3 scripts/native-combat-fixture.py server-fire --weapon-slot 2 --target-entity 1
+</code></pre>
+<p><code>--target-entity -1</code> selects an untargeted shot. Overrides apply only to <code>fire</code> and <code>server-fire</code>; their default fixtures remain unchanged. These commands require the separately supplied native DLL and use the pinned build's serializer offsets.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../project-files.html">Project files and downloads</a></p>

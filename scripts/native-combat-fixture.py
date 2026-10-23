@@ -45,7 +45,11 @@ def mapped_image(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=("title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire"))
+    parser.add_argument("--weapon-slot", type=int, choices=range(85), help="override the synthetic fire weapon slot")
+    parser.add_argument("--target-entity", type=int, choices=range(-1, 84), help="override the synthetic fire target (-1 means none)")
     args = parser.parse_args()
+    if (args.weapon_slot is not None or args.target_entity is not None) and args.kind not in ("fire", "server-fire"):
+        parser.error("weapon/target overrides require fire or server-fire")
     data = DLL.read_bytes()
     if hashlib.sha256(data).hexdigest() != "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f":
         raise ValueError("serializer offsets require the supplied September 2001 DLL")
@@ -72,6 +76,10 @@ def main():
                         0x6C: 3, 0x90: 17, 0x94: 18, 0x98: 19,
                         0x9C: 20, 0xA0: 4, 0xA1: 210, 0xA2: 5,
                         0xA3: 6}}.get(args.kind, {})
+    if args.weapon_slot is not None:
+        fields[0x30 if args.kind == "fire" else 0x31] = args.weapon_slot
+    if args.target_entity is not None:
+        fields[0x31 if args.kind == "fire" else 0x32] = args.target_entity + 1
     vectors = {}
     if args.kind == "commando":
         # Stock COM-4D initialization in FakeACat, 0x6905b696..0x6905b92b,

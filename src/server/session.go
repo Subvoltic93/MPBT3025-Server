@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -561,7 +562,7 @@ func (h *sessionHub) noteCombatPrepared(session *liveSession, body []byte) {
 	h.mu.Unlock()
 }
 
-func (h *sessionHub) relayCombatPosition(session *liveSession, body []byte) {
+func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 	if h == nil || !h.experimentalCombatInit {
 		return
 	}
@@ -569,8 +570,8 @@ func (h *sessionHub) relayCombatPosition(session *liveSession, body []byte) {
 	if err != nil {
 		return
 	}
-	positionCommand, ok := protocol.ClientCombatPosition(commands)
-	if !ok {
+	batch, err := protocol.ParseClientCombatCommands(commands)
+	if err != nil {
 		return
 	}
 	h.mu.Lock()
@@ -589,29 +590,66 @@ func (h *sessionHub) relayCombatPosition(session *liveSession, body []byte) {
 			}
 		}
 	}
-	h.mu.Unlock()
-	command, err := protocol.CombatPeerPosition(entityID, positionCommand)
-	if err != nil {
-		return
-	}
-	position := protocol.CombatData(command)
-	for _, other := range recipients {
-		if err := other.sendGamePDU(position); err != nil {
-			log.Printf("Native combat position relay in mission %d: %v", roomID, err)
+	fires := make([]protocol.PDU, 0, len(batch.Fires))
+	for _, clientFire := range batch.Fires {
+		fire, err := combatFireForRoom(entityID, h.combatEntities[roomID], clientFire)
+		if err != nil {
+			log.Printf("Ignoring native combat fire in mission %d from %q: %v", roomID, presence.callSign, err)
+			continue
 		}
+		selection, _ := protocol.ParseClientCombatFire(clientFire)
+		log.Printf("Relay native combat fire in mission %d from %q: weapon slot %d, target entity %d", roomID, presence.callSign, selection.WeaponSlot, selection.TargetEntity)
+		fires = append(fires, fire)
 	}
-	if len(commands) == 73 {
-		fireCommand, err := protocol.CombatPeerFire(entityID, commands[37:])
+	h.mu.Unlock()
+	if batch.Position != nil {
+		command, err := protocol.CombatPeerPosition(entityID, batch.Position)
 		if err != nil {
 			return
 		}
-		fire := protocol.CombatData(fireCommand)
+		position := protocol.CombatData(command)
+		for _, other := range recipients {
+			if err := other.sendGamePDU(position); err != nil {
+				log.Printf("Native combat position relay in mission %d: %v", roomID, err)
+			}
+		}
+	}
+	for _, fire := range fires {
 		for _, other := range recipients {
 			if err := other.sendGamePDU(fire); err != nil {
 				log.Printf("Native combat fire relay in mission %d: %v", roomID, err)
 			}
 		}
 	}
+}
+
+func combatFireForRoom(shooter byte, roster map[string]byte, command []byte) (protocol.PDU, error) {
+	selection, err := protocol.ParseClientCombatFire(command)
+	if err != nil {
+		return protocol.PDU{}, err
+	}
+	// launchMission only initializes the stock COM-4D. An arbitrary slot can
+	// make the native fire visitor dereference a nonexistent weapon.
+	if selection.WeaponSlot >= protocol.CombatCommandoWeaponCount {
+		return protocol.PDU{}, fmt.Errorf("weapon slot %d is outside the COM-4D loadout", selection.WeaponSlot)
+	}
+	if selection.TargetEntity >= 0 {
+		found := false
+		for _, entity := range roster {
+			if int(entity) == selection.TargetEntity {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return protocol.PDU{}, fmt.Errorf("target entity %d is outside the launched room", selection.TargetEntity)
+		}
+	}
+	peer, err := protocol.CombatPeerFire(shooter, command)
+	if err != nil {
+		return protocol.PDU{}, err
+	}
+	return protocol.CombatData(peer), nil
 }
 
 func startMissionScheduler(world *state.Store, hub *sessionHub) {

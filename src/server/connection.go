@@ -314,7 +314,7 @@ func serve(conn net.Conn, traceDir string, planetStateReply *protocol.PDU, world
 				case protocol.CombatDataID:
 					if hub != nil {
 						hub.noteCombatPrepared(session, p.Body)
-						hub.relayCombatPosition(session, p.Body)
+						hub.relayCombatCommands(session, p.Body)
 					}
 				case protocol.ReadyStateChangeID:
 					options, err := protocol.ParseSeatOptionsRequest(p.Body)

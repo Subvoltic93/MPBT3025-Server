@@ -24,7 +24,7 @@ func readNativeCombatFixture(t *testing.T, kind string) []byte {
 // receive preprocessing in an isolated i386 process. Regenerate with
 // scripts/native-combat-fixture.py; they are independent of the Go encoder.
 func TestCombatDataMatchesNativeFixtures(t *testing.T) {
-	for _, kind := range []string{"title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire"} {
+	for _, kind := range []string{"title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire", "targeted-fire", "server-targeted-fire"} {
 		t.Run(kind, func(t *testing.T) {
 			data := readNativeCombatFixture(t, kind)
 			var fixture struct {
@@ -209,5 +209,92 @@ func TestNativeShotFrameRetainsPositionCommand(t *testing.T) {
 	}
 	if _, err := CombatPeerPosition(0, position); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNativeTargetedFireReferences(t *testing.T) {
+	commands := make(map[string][]byte)
+	for _, kind := range []string{"targeted-fire", "server-targeted-fire"} {
+		var fixture struct {
+			CommandHex string `json:"command_hex"`
+		}
+		if err := json.Unmarshal(readNativeCombatFixture(t, kind), &fixture); err != nil {
+			t.Fatal(err)
+		}
+		command, err := hex.DecodeString(fixture.CommandHex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commands[kind] = command
+	}
+	client := commands["targeted-fire"]
+	selection, err := ParseClientCombatFire(client)
+	if err != nil || selection.WeaponSlot != 2 || selection.TargetEntity != 1 {
+		t.Fatalf("native targeted selection = %+v, %v", selection, err)
+	}
+	peer, err := CombatPeerFire(1, client)
+	if err != nil || !bytes.Equal(peer, commands["server-targeted-fire"]) {
+		t.Fatalf("targeted fire differs from native server writer: %x, %v", peer, err)
+	}
+	client[2] = '!'
+	selection, err = ParseClientCombatFire(client)
+	if err != nil || selection.TargetEntity != -1 {
+		t.Fatal("zero target must decode as untargeted")
+	}
+	client[35] = 0
+	if _, err := ParseClientCombatFire(client); err == nil {
+		t.Fatal("accepted malformed fire tail")
+	}
+	if _, err := ParseClientCombatFire(client[:2]); err == nil {
+		t.Fatal("accepted truncated fire command")
+	}
+}
+
+func TestNativeStandaloneFireAndCompleteBatches(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "data", "test-fixtures", "combat-live-standalone-fire.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		ClientBodyHex string `json:"client_body_hex"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	body, err := hex.DecodeString(fixture.ClientBodyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fire, err := ParseClientCombatData(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := ParseClientCombatCommands(fire)
+	if err != nil || batch.Position != nil || len(batch.Fires) != 1 {
+		t.Fatalf("standalone fire = %+v, %v", batch, err)
+	}
+	if _, prepared := ClientCombatPosition(fire); prepared {
+		t.Fatal("standalone fire released preparation barrier")
+	}
+	var positionFixture struct {
+		CommandHex string `json:"command_hex"`
+	}
+	if err := json.Unmarshal(readNativeCombatFixture(t, "client-position"), &positionFixture); err != nil {
+		t.Fatal(err)
+	}
+	position, err := hex.DecodeString(positionFixture.CommandHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := append(append(append([]byte(nil), position...), fire...), fire...)
+	batch, err = ParseClientCombatCommands(combined)
+	if err != nil || len(batch.Position) != 37 || len(batch.Fires) != 2 {
+		t.Fatalf("position and two fire events = %+v, %v", batch, err)
+	}
+	for _, bad := range [][]byte{nil, fire[:35], combined[:len(combined)-1], append(append([]byte(nil), position...), '_'), append(append([]byte(nil), fire...), position...)} {
+		batch, err := ParseClientCombatCommands(bad)
+		if err == nil || batch.Position != nil || len(batch.Fires) != 0 {
+			t.Fatal("unsupported/truncated batch produced partial commands")
+		}
 	}
 }

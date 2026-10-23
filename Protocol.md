@@ -16,7 +16,7 @@ All default listeners bind to loopback, so they accept connections from this mac
 
 ## Direct client launch argument
 
-The tested local launch starts the existing game through `client/scripts/launch.sh` and passes `aol:<server-host>:<server-port>:key:<local-key>` to the executable. For the default listener, the argument is `aol:127.0.0.1:15000:key:local-dev`. `aol:` is the legacy startup argument that selects the Aries TCP endpoint; the host and port must match the server's `-listen` address. For a LAN server, bind with `-listen 0.0.0.0:15000` and put the server machine's reachable LAN address in the client argument.
+The direct launch passes `aol:<server-host>:<server-port>:key:<local-key>` to `BT3025.exe` (or to the Linux/Wine helper that launches it). For the default listener, the argument is `aol:127.0.0.1:15000:key:local-dev`. `aol:` is the legacy startup argument that selects the Aries TCP endpoint; the host and port must match the server's `-listen` address. On Windows, launch the existing `BT3025.exe` with this argument from its installation directory. For a LAN server, bind with `-listen 0.0.0.0:15000` and put the server machine's reachable LAN address in the client argument.
 
 This direct path bypasses the retired EA/GILS sign-in and launch service. The local key is only a development connection value; it is not an EA credential, and the emulator does not validate EA accounts or tickets. The client launcher and game files remain in a separate local client workspace and are not part of this server repository.
 

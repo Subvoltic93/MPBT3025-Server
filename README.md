@@ -33,33 +33,54 @@ Run `go run ./src/cmd/server -h` for the available flags. Planet-state probes, r
 
 ## Connect a local client
 
-The tested local path passes the server address to the game at launch with its legacy `aol:` argument. It is not entered in an in-game server-address screen. The launcher and game files live in a separate local client workspace; this server repository does not include or distribute them.
+The client receives the server endpoint at launch through its legacy `aol:` argument; it is not entered in an in-game server-address screen. The argument format is `aol:<server-host>:<server-port>:key:<local-key>`. The launcher and game files live in a separate local client workspace; this server repository does not include or distribute them.
 
-Start the server from this repository:
+### Windows
+
+In PowerShell, from the root of this server repository, start the Go server:
+
+```powershell
+go run ./src/cmd/server -listen 127.0.0.1:15000
+```
+
+In a second terminal, launch the existing Windows client from the directory containing `BT3025.exe`. Replace the example path with the location of your own client installation:
+
+```cmd
+cd /d "C:\path\to\MPBT3025andGILS\MPBT3025"
+BT3025.exe "aol:127.0.0.1:15000:key:local-dev"
+```
+
+The `local-dev` value is a development key, not an EA account or password. This direct launch bypasses the retired EA/GILS sign-in and launch service.
+
+### Linux with Wine
+
+In one terminal, from this repository, start the server:
 
 ```sh
 go run ./src/cmd/server -listen 127.0.0.1:15000
 ```
 
-Then, from the workspace root that contains your separate `client/` directory, launch the existing client helper with the `aol:<host>:<port>:key:<local-key>` argument:
+In another terminal, from the workspace root that contains your separate `client/` directory run the existing helper:
 
 ```sh
 ./client/scripts/launch.sh game aol:127.0.0.1:15000:key:local-dev
 ```
 
-For a client on another computer on your private LAN, start the server in one terminal from this repository, bound to its interfaces:
+### Client on another computer on your LAN
+
+On the server computer, start the server from this repository bound to its network interfaces:
 
 ```sh
 go run ./src/cmd/server -listen 0.0.0.0:15000
 ```
 
-In a second terminal, from the workspace root that contains the separate `client/` directory, use the server computer's LAN address in the launch argument. For example, if that address is `192.168.1.25`:
+On the Windows client, use the server computer's reachable LAN IPv4 address in the `aol:` argument. For example, if `ipconfig` shows `192.168.1.25` on the server, run this from the directory containing `BT3025.exe`:
 
-```sh
-./client/scripts/launch.sh game aol:192.168.1.25:15000:key:local-dev
+```cmd
+BT3025.exe "aol:192.168.1.25:15000:key:local-dev"
 ```
 
-The `aol:` value tells the game where to open its Aries TCP connection. `local-dev` is a development key, not an EA account or password; the emulator does not implement the retired EA/GILS sign-in. Allow inbound TCP port `15000` through the server computer's firewall for the trusted LAN. Do not put `0.0.0.0` in the client argument; that address is only the server's bind target. Keep this unauthenticated prototype on a local or trusted network.
+For a Linux/Wine client, pass that same argument to `./client/scripts/launch.sh game`. Allow inbound TCP port `15000` through the server computer's firewall for the trusted LAN. Do not put `0.0.0.0` in the client argument; it is only the server's bind address. Keep this unauthenticated prototype on a local or trusted network.
 
 The optional secondary listener on port `15001` is experimental and only used with `-planet-redirect`; it is not needed for the tested direct-launch path.
 

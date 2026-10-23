@@ -38,20 +38,31 @@
 </code></pre>
 <p>Run <code>go run ./src/cmd/server -h</code> for the available flags. Planet-state probes, room-type trials, combat initialization, and the second listener are experimental; use them only with an isolated local client.</p>
 <h2>Connect a local client</h2>
-<p>The tested local path passes the server address to the game at launch with its legacy <code>aol:</code> argument. It is not entered in an in-game server-address screen. The launcher and game files live in a separate local client workspace; this server repository does not include or distribute them.</p>
-<p>Start the server from this repository:</p>
+<p>The client receives the server endpoint at launch through its legacy <code>aol:</code> argument; it is not entered in an in-game server-address screen. The argument format is <code>aol:&lt;server-host&gt;:&lt;server-port&gt;:key:&lt;local-key&gt;</code>. The launcher and game files live in a separate local client workspace; this server repository does not include or distribute them.</p>
+<h3>Windows</h3>
+<p>In PowerShell, from the root of this server repository, start the Go server:</p>
+<pre><code class="language-powershell">go run ./src/cmd/server -listen 127.0.0.1:15000
+</code></pre>
+<p>In a second terminal, launch the existing Windows client from the directory containing <code>BT3025.exe</code>. Replace the example path with the location of your own client installation:</p>
+<pre><code class="language-cmd">cd /d &quot;C:\path\to\MPBT3025andGILS\MPBT3025&quot;
+BT3025.exe &quot;aol:127.0.0.1:15000:key:local-dev&quot;
+</code></pre>
+<p>The <code>local-dev</code> value is a development key, not an EA account or password. This direct launch bypasses the retired EA/GILS sign-in and launch service.</p>
+<h3>Linux with Wine</h3>
+<p>In one terminal, from this repository, start the server:</p>
 <pre><code class="language-sh">go run ./src/cmd/server -listen 127.0.0.1:15000
 </code></pre>
-<p>Then, from the workspace root that contains your separate <code>client/</code> directory, launch the existing client helper with the <code>aol:&lt;host&gt;:&lt;port&gt;:key:&lt;local-key&gt;</code> argument:</p>
+<p>In another terminal, from the workspace root that contains your separate <code>client/</code> directory run the existing helper:</p>
 <pre><code class="language-sh">./client/scripts/launch.sh game aol:127.0.0.1:15000:key:local-dev
 </code></pre>
-<p>For a client on another computer on your private LAN, start the server in one terminal from this repository, bound to its interfaces:</p>
+<h3>Client on another computer on your LAN</h3>
+<p>On the server computer, start the server from this repository bound to its network interfaces:</p>
 <pre><code class="language-sh">go run ./src/cmd/server -listen 0.0.0.0:15000
 </code></pre>
-<p>In a second terminal, from the workspace root that contains the separate <code>client/</code> directory, use the server computer's LAN address in the launch argument. For example, if that address is <code>192.168.1.25</code>:</p>
-<pre><code class="language-sh">./client/scripts/launch.sh game aol:192.168.1.25:15000:key:local-dev
+<p>On the Windows client, use the server computer's reachable LAN IPv4 address in the <code>aol:</code> argument. For example, if <code>ipconfig</code> shows <code>192.168.1.25</code> on the server, run this from the directory containing <code>BT3025.exe</code>:</p>
+<pre><code class="language-cmd">BT3025.exe &quot;aol:192.168.1.25:15000:key:local-dev&quot;
 </code></pre>
-<p>The <code>aol:</code> value tells the game where to open its Aries TCP connection. <code>local-dev</code> is a development key, not an EA account or password; the emulator does not implement the retired EA/GILS sign-in. Allow inbound TCP port <code>15000</code> through the server computer's firewall for the trusted LAN. Do not put <code>0.0.0.0</code> in the client argument; that address is only the server's bind target. Keep this unauthenticated prototype on a local or trusted network.</p>
+<p>For a Linux/Wine client, pass that same argument to <code>./client/scripts/launch.sh game</code>. Allow inbound TCP port <code>15000</code> through the server computer's firewall for the trusted LAN. Do not put <code>0.0.0.0</code> in the client argument; it is only the server's bind address. Keep this unauthenticated prototype on a local or trusted network.</p>
 <p>The optional secondary listener on port <code>15001</code> is experimental and only used with <code>-planet-redirect</code>; it is not needed for the tested direct-launch path.</p>
 <h2>Layout</h2>
 <pre><code class="language-text">.

@@ -1,5 +1,7 @@
 # MPBT3025 Server Emulator
 
+> **Live project status site:** [MPBT 3025 restoration status](https://subvoltic93.github.io/MPBT3025-Server/)
+
 A Go implementation of the local server side of the MPBT 3025 protocol. The project focuses on connection bootstrap, pilot and campaign state, Solaris rooms, and the current multiplayer combat path. It does not contain the original client, client binaries, art, maps, or the reference project's source.
 
 The organization takes inspiration from the separation of source, research, and utilities in [KenzHuman's `mpbt-server`](https://github.com/kenhuman/mpbt-server). This implementation remains Go and keeps its protocol and state packages small and explicit.

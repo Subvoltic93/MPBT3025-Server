@@ -21,3 +21,5 @@ For isolated damage-writer evidence, run `python3 scripts/native-combat-fixture.
 `python3 scripts/native-damage-fixture.py` runs the original non-destructive armor resolver/GetDamageState and armor assignment code on synthetic arrays in an isolated i386 process. The bounded AddDamage recorder and synthetic Reality getter are declared in its JSON. It demonstrates absolute remaining values and one overflow case; it does not cover destruction, critical hits or production combat authority. Save its output as `data/test-fixtures/combat-native-armor-resolution.json`. Requires the pinned external DLL, Linux i386 execution, `as` and `ld`.
 
 Fire fixtures also accept `--hit-part -1..84` for synthetic collision-part encoding (`-1` means absent); it applies only to `fire`/`server-fire`. A Mech report’s supported region range remains 0–10.
+
+The armor fixture also reads pinned type-3 medium-laser damage/range data used by `CWeapon::Init` and the initial piloting target from the Mech constructor. These static inputs support the bounded live armor diagnostic; they do not establish repeated-hit piloting rules.

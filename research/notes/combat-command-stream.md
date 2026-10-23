@@ -276,3 +276,37 @@ opposite-direction laser batches decode to Mech armor part4. The relay now
 rejects Mech reports with missing/out-of-range parts (valid0..10), while
 preserving the separate terrain/untargeted space. This validates references;
 it does not independently validate collision geometry or award damage.
+
+## Live queue-before-fire armor diagnostic
+
+`CWeapon::Init`0x6905f610 reads type-dependent damage at0x690b99b4+140*type
+and range bands at0x690b99c8+140*type. Type3 medium laser has damage5 and
+bands45/90/135/180/225/270m. Mech constructor0x69041026 sets piloting target4.
+These pinned static inputs are recorded by the native armor fixture tool.
+
+The opt-in `-experimental-combat-armor-probe` allows exactly one non-lethal
+medium-laser armor assignment per target in an active native mission. It uses
+stock COM-4D armor minus5 and initial piloting4, and trusts reported collision
+geometry. It never handles depletion, internal/critical damage, destruction,
+or further damage to that target. The allowance resets on launch/departure/
+disconnect. This is a bounded native receive/routing diagnostic.
+
+For that hit it constructs one stream: explicit-entity `c` assignment followed
+by `e` fire, delivered to both shooter and target clients. Visitor0x690737be
+skips effects for the local shooter but continues at0x69073967 to request
+application of the queued target records. Sending only to peers would leave
+the shooter's local target display unchanged.
+
+Native trial13:46:51 Subvoltic->BetaPilot and13:47:32 BetaPilot->Subvoltic
+both reported slot0/part4. Each assignment changed center torso15->10, and
+both own and target HUD panels visibly changed gray to green. Both session
+traces contain the same stream for each direction. Subvoltic's later slot0/
+part4 shot at13:48:48 relayed without a third diagnostic assignment. Clients
+stayed stable. Exact client reports and server bodies are preserved in
+`data/test-fixtures/combat-live-armor-probe.json` and replayed through the
+server tests. Local screenshots remain in runtime, not the public repository.
+
+Next implement independent collision checks, server armor/internal state,
+weapon cadence and correct piloting-target updates. Preserve this verified
+assignment-before-fire order while extending damage; the diagnostic does not
+establish authoritative hits or match completion.

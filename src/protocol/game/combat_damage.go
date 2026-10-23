@@ -16,7 +16,7 @@ type CombatDamageUpdate struct {
 
 // CombatDamageCommand matches native writer 0x6906baa0 (key 0x42, wire c).
 // For the recovered laser path, queue assignments before the matching fire
-// command, which requests application. This encoder is not wired into the relay.
+// command, which requests application. The opt-in armor diagnostic uses this encoder.
 func CombatDamageCommand(update CombatDamageUpdate) ([]byte, error) {
 	fields := [...]byte{update.EntityID, update.Slot, update.Remaining, update.CreditEntity, update.PilotingTarget}
 	command := []byte{'c'}

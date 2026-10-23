@@ -1,0 +1,27 @@
+{
+  "source": "2026-10-23 opt-in one-shot armor diagnostic. Both own and target torso panels changed gray to green in both directions. Client-reported collision geometry is trusted; no authoritative combat claim. Protocol bytes only.",
+  "shots": [
+    {
+      "shooter_entity": 0,
+      "target_entity": 1,
+      "armor_region": 4,
+      "armor_before": 15,
+      "armor_after": 10,
+      "client_body_hex": "0000004f1b21274b4b4b4b4b4c6c2d22683c4b4b4b4b4b4b4b4d554b4b4b4b4b4b4b4b4b4b4b4b2121253b2b21232121264b4b4b4b4b4b4b4b4b4b4b4c6c2d22683c4b4a2b544b4d446f4b4b4b4b22234b391b",
+      "server_body_hex": "000000311b2163223a2b2125652121232121264b4b4b4b4b4b4b4b4b4b4b4c6c2d22683c4b4a2b544b4d446f4b4b4b4b585b441b00",
+      "observed_receivers": 2
+    },
+    {
+      "shooter_entity": 1,
+      "target_entity": 0,
+      "armor_region": 4,
+      "armor_before": 15,
+      "armor_after": 10,
+      "client_body_hex": "0000004f1b21274b4b4b4b4b4a2a6922683c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b2121283a2b21222121264b4b4b4b4b4b4b4b4b4b4b4a2a6922683c4b4c6b3c4b4d446f4b4b4b4b223340501b",
+      "server_body_hex": "000000311b2163213a2b2225652221222121264b4b4b4b4b4b4b4b4b4b4b4a2a6922683c4b4c6b3c4b4d446f4b4b4b4b4b26221b00",
+      "observed_receivers": 2
+    }
+  ],
+  "repeat_client_body_hex": "0000004f1b21274b4b4b4b4b4c6c2d22683c4b4b4b4b4b4b4b4d554b4b4b4b4b4b4b4b4b4b4b4b2121275f2b21232121264b4b4b4b4b4b4b4b4b4b4b4c6c2d22683c4b4a2b544b4d446f4b4b4b4b22234c441b",
+  "diagnostic_assignment_count": 2
+}

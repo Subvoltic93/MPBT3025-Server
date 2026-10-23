@@ -6,8 +6,11 @@ Work resumed on 2026-10-19. Original client assets are untouched; experiments us
 
 ## Current state
 
-**Resume here:** [Solaris session handoff, 2026-10-21](solaris-session-2026-10-21.md)
-contains the latest live-session checkpoint and historical client evidence.
+**Resume here:** [Solaris session handoff, 2026-10-23](solaris-session-2026-10-23.md)
+contains the latest live-session checkpoint, moved checkout and active processes.
+The opt-in armor diagnostic now synchronizes one non-lethal torso update per
+target in both clients. Full damage rules and match results remain unfinished.
+The [October 21 handoff](solaris-session-2026-10-21.md) preserves earlier evidence.
 The current project layout and active development notes are in the root README
 and project status page.
 

@@ -163,7 +163,12 @@ SECTIONS {
                       'resolver': '0x690500c0', 'assignment': '0x69048100',
                       'substitutions': ['AddDamage bounded recorder', 'synthetic Reality getter'],
                       'cases': resolved,
-                      'absolute_assignments': list(struct.unpack_from('<3I', output, 104))}, indent=2))
+                      'absolute_assignments': list(struct.unpack_from('<3I', output, 104)),
+                      'medium_laser': {'weapon_type': 3,
+                          'damage': struct.unpack_from('<I', image, 0xb99b4+3*140)[0],
+                          'range_bands': list(struct.unpack_from('<6I', image, 0xb99c8+3*140)),
+                          'table_reader': '0x6905f610'},
+                      'initial_piloting_target': struct.unpack_from('<I', image, 0x4102c)[0]}, indent=2))
 
 
 if __name__ == '__main__':

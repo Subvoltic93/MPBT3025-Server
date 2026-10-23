@@ -1,0 +1,132 @@
+package server
+
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"mpbt3025/src/protocol/game"
+	"mpbt3025/src/state"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestArmorProbeSendsQueueAndFireToBothClientsOnce(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-live-armor-probe.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Shots []struct {
+			Body       string `json:"client_body_hex"`
+			ServerBody string `json:"server_body_hex"`
+		} `json:"shots"`
+		Repeat string `json:"repeat_client_body_hex"`
+	}
+	if err = json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Shots) != 2 {
+		t.Fatal("missing live armor probe directions")
+	}
+	body, err := hex.DecodeString(fixture.Shots[0].Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands, err := protocol.ParseClientCombatData(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch, err := protocol.ParseClientCombatCommands(commands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []bool{false, true} {
+		h := newSessionHub()
+		h.experimentalCombatInit = true
+		h.experimentalCombatArmorProbe = enabled
+		h.combatEntities = map[int]map[string]byte{1: {"Alpha": 0, "Beta": 1}}
+		h.combatActive = map[int]bool{1: false}
+		var self, peer, other []protocol.PDU
+		alpha := &liveSession{sendGamePDU: func(p protocol.PDU) error { self = append(self, p); return nil }}
+		beta := &liveSession{sendGamePDU: func(p protocol.PDU) error { peer = append(peer, p); return nil }}
+		elsewhere := &liveSession{sendGamePDU: func(p protocol.PDU) error { other = append(other, p); return nil }}
+		h.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+		h.sessions[beta] = planetPresence{callSign: "Beta", location: state.Location{RoomID: 1}}
+		h.sessions[elsewhere] = planetPresence{callSign: "Other", location: state.Location{RoomID: 2}}
+		h.relayCombatCommands(alpha, body)
+		if len(self)+len(peer)+len(other) != 0 {
+			t.Fatal("probe before Ready")
+		}
+		h.combatActive[1] = true
+		h.relayCombatCommands(alpha, body)
+		if len(peer) != 2 || len(other) != 0 {
+			t.Fatal("wrong position/fire recipients")
+		}
+		if !enabled {
+			if len(self) != 0 || len(h.combatArmorProbed) != 0 {
+				t.Fatal("disabled probe changed sender or budget")
+			}
+			continue
+		}
+		damage, err := protocol.CombatDamageCommand(protocol.CombatDamageUpdate{EntityID: 1, Slot: 25, Remaining: 10, CreditEntity: 0, PilotingTarget: 4})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fire, err := protocol.CombatPeerFire(0, batch.Fires[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := protocol.CombatData(append(damage, fire...))
+		captured, err := hex.DecodeString(fixture.Shots[0].ServerBody)
+		if err != nil || !bytes.Equal(want.Body, captured) {
+			t.Fatal("probe differs from verified native receiving stream")
+		}
+		if len(self) != 1 || !bytes.Equal(self[0].Body, want.Body) || !bytes.Equal(peer[1].Body, want.Body) {
+			t.Fatal("both clients need the same queue-before-fire stream")
+		}
+		self, peer = nil, nil
+		repeat, err := hex.DecodeString(fixture.Repeat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.relayCombatCommands(alpha, repeat)
+		if len(self) != 0 || len(peer) != 2 || bytes.Equal(peer[1].Body, want.Body) {
+			t.Fatal("probe applied twice to target")
+		}
+		// The opposite target has its own one-shot budget.
+		reverse, err := hex.DecodeString(fixture.Shots[1].Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		self, peer = nil, nil
+		h.relayCombatCommands(beta, reverse)
+		if len(self) != 2 || len(peer) != 1 || !h.combatArmorProbed[1][0] || !h.combatArmorProbed[1][1] {
+			t.Fatal("opposing target did not get an independent probe")
+		}
+		captured, err = hex.DecodeString(fixture.Shots[1].ServerBody)
+		if err != nil || !bytes.Equal(peer[0].Body, captured) || !bytes.Equal(self[1].Body, captured) {
+			t.Fatal("reverse probe differs from verified receiving stream")
+		}
+		h.remove(beta)
+		if len(h.combatArmorProbed) != 0 {
+			t.Fatal("disconnect retained probe state")
+		}
+	}
+}
+
+func TestArmorProbeSkipsUnsupportedShots(t *testing.T) {
+	h := newSessionHub()
+	h.experimentalCombatArmorProbe = true
+	for _, hit := range []protocol.CombatFireSelection{
+		{WeaponSlot: 1, TargetEntity: 1, HitPart: 4},
+		{WeaponSlot: 0, TargetEntity: -1, HitPart: 4},
+		{WeaponSlot: 0, TargetEntity: 0, HitPart: 4},
+		{WeaponSlot: 0, TargetEntity: 1, HitPart: -1},
+		{WeaponSlot: 0, TargetEntity: 1, HitPart: 11},
+	} {
+		if _, ok := h.armorProbeForShot(1, 0, hit, nil); ok || len(h.combatArmorProbed) != 0 {
+			t.Fatalf("unsupported shot changed budget: %+v", hit)
+		}
+	}
+}

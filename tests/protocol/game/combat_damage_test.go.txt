@@ -63,3 +63,20 @@ func TestNativeArmorAssignmentsAreAbsolute(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeMediumLaserAndInitialPilotingTarget(t *testing.T) {
+	var fixture struct {
+		Laser struct {
+			Type   int   `json:"weapon_type"`
+			Damage int   `json:"damage"`
+			Bands  []int `json:"range_bands"`
+		} `json:"medium_laser"`
+		Piloting int `json:"initial_piloting_target"`
+	}
+	if err := json.Unmarshal(readNativeCombatFixture(t, "armor-resolution"), &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Laser.Type != 3 || fixture.Laser.Damage != 5 || len(fixture.Laser.Bands) != 6 || fixture.Laser.Bands[5] != 270 || fixture.Piloting != 4 {
+		t.Fatalf("native probe inputs changed: %+v", fixture)
+	}
+}

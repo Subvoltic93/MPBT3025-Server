@@ -20,7 +20,7 @@ The direct launch passes `aol:<server-host>:<server-port>:key:<local-key>` to `B
 
 This direct path bypasses the retired EA/GILS sign-in and launch service. The local key is only a development connection value; it is not an EA credential, and the emulator does not validate EA accounts or tickets. The client launcher and game files remain in a separate local client workspace and are not part of this server repository.
 
-The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-collision-part.json` and `runtime/traces/collision-part/`.
+The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-armor-probe.json` and `runtime/traces/armor-probe/`.
 
 ## Aries transport
 
@@ -92,8 +92,12 @@ The 36-byte client command begins with `+`, followed by one base85 digit for wea
 
 ## Experimental spawn arrangement
 
-Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. No damage change was established. These are diagnostic spawns, not recovered production spawn rules.
+Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. The later opt-in armor diagnostic verified one synchronized non-lethal armor change per target. These remain diagnostic spawns, not recovered production spawn rules.
 
 ## Native absolute damage assignments
 
-Key `0x42` / wire `c` carries five one-digit values: entity, state slot, remaining value, credit entity, piloting target. `CombatDamageCommand` matches the native writer and rejects field overflow; it is not emitted by the relay. Slots 21–31 represent absolute remaining armor, 32–39 internal structure. In isolated native runs, armor 15 taking 5 damage queues slot 25 = 10 for region 4; armor 3 overflows to slot 36 = 18 from internal 20. Original `Damage` only lowers armor: repeated 10 and older 12 assignments both leave it at 10. Server hit rules, component/destruction handling and piloting-target calculation remain unfinished.
+Key `0x42` / wire `c` carries five one-digit values: entity, state slot, remaining value, credit entity, piloting target. `CombatDamageCommand` matches the native writer and rejects field overflow; the normal relay emits no assignments, while the opt-in diagnostic below emits one per target. Slots 21–31 represent absolute remaining armor, 32–39 internal structure. In isolated native runs, armor 15 taking 5 damage queues slot 25 = 10 for region 4; armor 3 overflows to slot 36 = 18 from internal 20. Original `Damage` only lowers armor: repeated 10 and older 12 assignments both leave it at 10. Server hit rules, component/destruction handling and piloting-target calculation remain unfinished.
+
+## Opt-in live armor diagnostic
+
+`-experimental-combat-armor-probe` requires native setup. After valid active-room references, a slot-0 medium-laser Mech report can consume the target’s single diagnostic allowance. The server uses stock armor minus 5 and initial piloting target 4; depleted armor, internal damage and subsequent hits are outside this diagnostic. It sends `c` then `e` in one `0x81` stream to both authenticated room clients, including the shooter. The shooter’s visitor skips its own effect but applies the queued target assignment. Launch/departure/disconnect clears the allowance. Two native directions and a later ordinary shot are preserved in `data/test-fixtures/combat-live-armor-probe.json`. Geometry is still client-reported; this flag does not enable authoritative combat.

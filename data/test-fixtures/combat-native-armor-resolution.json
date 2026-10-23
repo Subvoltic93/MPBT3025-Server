@@ -46,5 +46,19 @@
     10,
     10,
     10
-  ]
+  ],
+  "medium_laser": {
+    "weapon_type": 3,
+    "damage": 5,
+    "range_bands": [
+      45,
+      90,
+      135,
+      180,
+      225,
+      270
+    ],
+    "table_reader": "0x6905f610"
+  },
+  "initial_piloting_target": 4
 }

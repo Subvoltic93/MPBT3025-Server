@@ -11,3 +11,5 @@ Combat tests compare targeted client/server serializer fixtures, parse weapon an
 The mirrored diagnostic spawn regression checks separate seat positions and opposing origin lines. Captured targeted laser batches cover both entity directions and authenticated peer conversion. Damage writer fixtures check the native six-byte entity command and five-byte local command plus their native checksums; they do not establish hit rules or damage application.
 
 Damage protocol tests compare `CombatDamageCommand` to the native writer, reject every overflowing one-digit field, and preserve isolated native evidence for absolute assignments and internal overflow. Collision-part tests cover three-digit parsing, both captured region-4 laser reports, valid Mech region boundaries and rejection beyond 0–10. Non-Mech reports keep their separate part space.
+
+Armor diagnostic tests replay the exact live receiving streams in both directions, verify disabled/default and pre-Ready behavior, exclude other rooms, limit updates to one per target, and clear diagnostic state on disconnect. Config validation requires native setup when the diagnostic flag is enabled.

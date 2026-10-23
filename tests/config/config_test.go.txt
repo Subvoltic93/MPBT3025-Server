@@ -1,0 +1,12 @@
+package config
+
+import "testing"
+
+func TestArmorProbeRequiresNativeCombatSetup(t *testing.T) {
+	for _, tc := range []struct{ init, probe, valid bool }{{false, false, true}, {false, true, false}, {true, true, true}} {
+		err := (Config{ExperimentalPlanetRoomType: -1, ExperimentalCombatInit: tc.init, ExperimentalCombatArmorProbe: tc.probe}).Validate()
+		if (err == nil) != tc.valid {
+			t.Fatalf("init=%v probe=%v: %v", tc.init, tc.probe, err)
+		}
+	}
+}

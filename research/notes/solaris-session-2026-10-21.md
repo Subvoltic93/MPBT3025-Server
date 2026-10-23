@@ -2,6 +2,8 @@
 
 Historical local paths in this document are relative to the original workspace root. Original client assets, client-derived research, and visual evidence remain in the separate workspace-root `client/` directory and are not included in this server project.
 
+Current continuation: [October 23 handoff](solaris-session-2026-10-23.md) records the moved server checkout, latest tests and synchronized native armor diagnostic.
+
 Recovery notes are chronological; read the latest checkpoints at the end first.
 This workspace is not a Git checkout; no commits were made. Do not redo the
 older failed numeric PlayerID/authentication experiments. All source edits are saved.

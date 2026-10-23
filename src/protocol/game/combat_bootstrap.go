@@ -6,6 +6,11 @@ import "fmt"
 // medium laser, SRM-6, and flamer. Native combat setup currently allows only it.
 const CombatCommandoWeaponCount = 3
 
+// CombatCommandoArmor returns the eleven stock armor values encoded by FakeACat.
+func CombatCommandoArmor() [CombatArmorRegionCount]byte {
+	return [CombatArmorRegionCount]byte{8, 8, 10, 10, 15, 13, 13, 11, 8, 8, 27}
+}
+
 // CombatPilot describes a starter COM-4D in the experimental native setup.
 // Combat entity IDs and teams use the combat DLL's own numbering; these are
 // separate from the shell's one-based seats and Alpha/Beta headings.
@@ -128,7 +133,7 @@ func (w *combatWriter) commando(pilot CombatPilot) {
 	// Stock armor, weapon, component, and ammunition records copied from
 	// FakeACat's MechID8 branch and shared component initialization. The
 	// first list's wire order is location/value, unlike its in-memory pair.
-	armor := [...]byte{8, 8, 10, 10, 15, 13, 13, 11, 8, 8, 27}
+	armor := CombatCommandoArmor()
 	w.number(uint32(len(armor)), 1)
 	for location, value := range armor {
 		w.number(uint32(location), 1)

@@ -21,14 +21,16 @@ type liveSession struct {
 // sufficient for planet occupancy: pilots from earlier disconnected runs
 // must not appear as live players.
 type sessionHub struct {
-	mu                     sync.Mutex
-	sessions               map[*liveSession]planetPresence
-	world                  *state.Store
-	planetRoomType         int // -1 disables the recovered room-update live trial
-	experimentalCombatInit bool
-	combatPreparing        map[int]map[string]bool
-	combatEntities         map[int]map[string]byte
-	combatActive           map[int]bool
+	mu                           sync.Mutex
+	sessions                     map[*liveSession]planetPresence
+	world                        *state.Store
+	planetRoomType               int // -1 disables the recovered room-update live trial
+	experimentalCombatInit       bool
+	experimentalCombatArmorProbe bool
+	combatArmorProbed            map[int]map[byte]bool
+	combatPreparing              map[int]map[string]bool
+	combatEntities               map[int]map[string]byte
+	combatActive                 map[int]bool
 }
 
 type planetPresence struct {
@@ -103,6 +105,7 @@ func (h *sessionHub) remove(session *liveSession) {
 		delete(h.combatPreparing, presence.location.RoomID)
 		delete(h.combatEntities, presence.location.RoomID)
 		delete(h.combatActive, presence.location.RoomID)
+		delete(h.combatArmorProbed, presence.location.RoomID)
 	}
 	others := make([]*liveSession, 0, len(h.sessions))
 	if joined {
@@ -224,6 +227,7 @@ func (h *sessionHub) publishMissionDeparture(session *liveSession, previous plan
 	delete(h.combatPreparing, previous.location.RoomID)
 	delete(h.combatEntities, previous.location.RoomID)
 	delete(h.combatActive, previous.location.RoomID)
+	delete(h.combatArmorProbed, previous.location.RoomID)
 	targets := make([]*liveSession, 0)
 	for other, p := range h.sessions {
 		if other != session && previous.location.RoomID != 0 && p.location.RoomID == previous.location.RoomID {
@@ -515,6 +519,7 @@ func (h *sessionHub) launchMission(roomID int) {
 		h.combatActive = map[int]bool{}
 	}
 	delete(h.combatActive, roomID)
+	delete(h.combatArmorProbed, roomID)
 	h.mu.Unlock()
 	for session, callSign := range recipients {
 		localID, ok := ids[callSign]
@@ -603,7 +608,11 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 			}
 		}
 	}
-	fires := make([]protocol.PDU, 0, len(batch.Fires))
+	type relayFire struct {
+		pdu  protocol.PDU
+		echo bool
+	}
+	fires := make([]relayFire, 0, len(batch.Fires))
 	for _, clientFire := range batch.Fires {
 		fire, err := combatFireForRoom(entityID, h.combatEntities[roomID], clientFire)
 		if err != nil {
@@ -612,7 +621,11 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 		}
 		selection, _ := protocol.ParseClientCombatFire(clientFire)
 		log.Printf("Relay native combat fire in mission %d from %q: weapon slot %d, target entity %d, hit part %d", roomID, presence.callSign, selection.WeaponSlot, selection.TargetEntity, selection.HitPart)
-		fires = append(fires, fire)
+		echo := false
+		if probe, ok := h.armorProbeForShot(roomID, entityID, selection, clientFire); ok {
+			fire, echo = probe, true
+		}
+		fires = append(fires, relayFire{pdu: fire, echo: echo})
 	}
 	h.mu.Unlock()
 	if batch.Position != nil {
@@ -628,8 +641,13 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 		}
 	}
 	for _, fire := range fires {
+		if fire.echo {
+			if err := session.sendGamePDU(fire.pdu); err != nil {
+				log.Printf("Native armor probe echo in mission %d: %v", roomID, err)
+			}
+		}
 		for _, other := range recipients {
-			if err := other.sendGamePDU(fire); err != nil {
+			if err := other.sendGamePDU(fire.pdu); err != nil {
 				log.Printf("Native combat fire relay in mission %d: %v", roomID, err)
 			}
 		}

@@ -349,14 +349,22 @@ and the native Mech collision volume/tolerance remains unknown. A future hit
 check must first follow the peer `0x41` visitor and reconstruct its position
 updates independently of the collision report.
 
-### Correction: peer-position visitor mapping remains unresolved
+### Peer-position receive visitor mapping
 
-The callback-table pointer at `0x6908e6ac` confirms `0x69073640` is visitor
-slot1. It does not by itself identify the command family that selects that
-slot. In particular, the older `solaris-session-2026-10-21.md` sentence
-calling it the server `0x41` visitor overstates the evidence. The trace so far
-shows combat-state3 position application and `Mech::SetPosition`, but the
-server peer-command object's receive dispatch and its field offsets have not
-been matched to this callback. Keep the server-side peer-position application
-path marked unknown; do not use client-reported hit coordinates to authorize
-damage until that mapping and native collision tolerance are recovered.
+The server key `0x41` registration thunk `0x6906f450` registers its factory
+through `0x69073e40`. Factory `0x6906f1c0` allocates a 0x50-byte wrapper, sets
+an outer vtable at the object base, and an embedded command subobject vtable at
+`base + 4`. It passes that embedded pointer in `ECX` to decoder `0x6906f3d0`.
+Consequently, decoder fields at `+0x2c` (entity), `+0x30` (X), `+0x34` (Y),
+`+0x38` (heading), and `+0x3c..+0x48` (remaining pose fields) appear at
+wrapper offsets `+0x30`, `+0x34`, `+0x38`, `+0x3c`, and `+0x40..+0x4c`.
+
+This matches visitor callback `0x69073640`: it reads the entity byte at
+`+0x30`, pose data beginning at `+0x34`, requires combat state3, scales the
+pose values, and calls `Mech::SetPosition` `0x69045920`. The callback is also
+visitor-table slot1 (`0x6908e6ac`). This establishes the native peer-position
+receive/application path and corrects the earlier overly cautious checkpoint.
+The server relay still does not retain a pose cache. Axis meaning, transformed
+world coordinates, collision volume/tolerance, and whether a client-reported
+HitReturn point corresponds to a server-validated hit remain open; do not use
+the collision report alone to authorize damage.

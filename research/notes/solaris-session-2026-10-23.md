@@ -416,3 +416,17 @@ dispatch from the key `0x41` factory instance to the callback, including
 object field offsets. Until confirmed, do not add an authoritative hit gate
 based on reported hit points. No restart, new client, VCR flag, or `0x97`
 response was used.
+
+## Receive visitor trace resolved
+
+Follow-up disassembly connected the `0x41` wrapper to its visitor. Factory
+`0x6906f1c0` passes the embedded subobject (`wrapper + 4`) to decoder
+`0x6906f3d0`; this places the entity at wrapper `+0x30` and pose fields at
+`+0x34` onward. Those offsets match callback `0x69073640`, which reads that
+entity, scales the pose, and calls `Mech::SetPosition` in combat state3.
+Thus `0x69073640` is the native server peer-position visitor. The earlier
+unresolved-mapping checkpoint above is superseded by this field-offset match.
+
+Next recover axis transforms and collision volume/tolerance before applying
+any hit gate. Client-reported HitReturn coordinates remain untrusted, and the
+server does not yet retain the relayed pose. No code or process state changed.

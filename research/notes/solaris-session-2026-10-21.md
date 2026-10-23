@@ -1149,7 +1149,7 @@ Leave this exact two-client stack running for continuation.
 Next useful work: reconstruct native server position command wire0x62 ('b'),
 then relay authenticated peer movement scoped to the launched mission.
 Registry key0x41 factory/vtable0x6908e284, writer0x6906f350,
-decoder0x6906f3d0. Payload after type: entity byte,
+decoder0x6906f3d0, visitor0x69073640. Payload after type: entity byte,
 signedX4, signedY4, unsigned3, four signed3 values (25 total command bytes).
 Client position command wire0x27 registry key6 / vtable0x6908e2bc,
 decoder0x6906f7a0: signedX4, signedY4, unsigned3, seven signed3,
@@ -1188,9 +1188,9 @@ Held W for2s on Subvoltic's combat window with focus verified; its HUD showed
 left on its HUD. Stopped with X. Captures:
 client/.runtime/captures/relay-after-w-{a,b}.png.
 This demonstrates local control and peer position response; no damage/fire
-simulation yet. The exact native receive callback that applies server peer
-position remains unresolved; callback0x69073640 is position-related but is
-not proven to be the server key0x41 visitor. Do not start a third BT3025 process.
+simulation yet. Factory tracing confirms callback0x69073640 as the native
+server peer-position visitor: its entity/pose offsets match the decoded
+key0x41 embedded subobject. Do not start a third BT3025 process.
 
 
 2026-10-22 fire continuation: live Left Alt fired Subvoltic's selected weapon.

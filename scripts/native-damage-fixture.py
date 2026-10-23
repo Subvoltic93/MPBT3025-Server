@@ -6,6 +6,7 @@ armor resolver/GetDamageState run on synthetic arrays; AddDamage is replaced
 with a bounded recorder. Original Damage runs with a synthetic Reality getter
 and non-local Mech, avoiding rendering/server callbacks. No destruction cases.
 """
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -16,6 +17,9 @@ import tempfile
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--all-regions', action='store_true', help='exercise all armor/internal/transfer regions with synthetic weapons')
+    args = parser.parse_args()
     native = runpy.run_path(str(Path(__file__).with_name('native-combat-fixture.py')))
     data = native['DLL'].read_bytes()
     digest = hashlib.sha256(data).hexdigest()
@@ -23,16 +27,24 @@ def main():
         raise ValueError('requires the pinned September 2001 BTCombat DLL')
     image = native['mapped_image'](data)
     # Input order: armor remaining, incoming damage. Armor index 4, credit 7.
-    cases = [(15, 5), (3, 5)]
+    armor_map = [0, 1, 2, 3, 4, 5, 6, 4, 5, 6, 7]
+    cases = [(4, 15, 20, 5), (4, 3, 20, 5)]
+    if args.all_regions:
+        cases = [(region, armor, internal, 5) for region in range(11)
+                 for armor, internal in [(15,20),(3,20),(0,3),(0,0)]]
+    bound = 16 if args.all_regions else 4
+    stride = 4 + bound * 12
+    size = len(cases) * stride + 12
     calls = []
-    for i, (armor, damage) in enumerate(cases):
+    for i, (region, armor, internal, damage) in enumerate(cases):
         calls.append(f'''
  call reset_mech
- mov DWORD PTR [mech+0x1a0], {armor}
- mov DWORD PTR [active_result], OFFSET results+{i * 52}
+ mov DWORD PTR [mech+0x190+{region*4}], {armor}
+ mov DWORD PTR [mech+0x1e8+{armor_map[region]*4}], {internal}
+ mov DWORD PTR [active_result], OFFSET results+{i * stride}
  push 7
  push 1
- push 4
+ push {region}
  push {damage}
  push OFFSET mech
  mov eax, 0x690500c0
@@ -82,12 +94,17 @@ _start:
  mov eax, 4
  mov ebx, 1
  mov ecx, OFFSET results
- mov edx, 116
+ mov edx, {size}
  int 0x80
  mov eax, 1
  xor ebx, ebx
  int 0x80
 reset_mech:
+ {'mov DWORD PTR [mech+0x134], OFFSET weapons' if args.all_regions else ''}
+ {'mov DWORD PTR [mech+0x138], 3' if args.all_regions else ''}
+ {'mov DWORD PTR [weapons+0x18], 1' if args.all_regions else ''}
+ {'mov DWORD PTR [weapons+104+0x18], 0' if args.all_regions else ''}
+ {'mov DWORD PTR [weapons+208+0x18], 4' if args.all_regions else ''}
  xor edx, edx
 reset_armor:
  mov DWORD PTR [mech+0x190+edx*4], 15
@@ -105,7 +122,7 @@ reset_internal:
 record_damage:
  mov edx, [active_result]
  mov eax, [edx]
- cmp eax, 4
+ cmp eax, {bound}
  jae failed
  imul eax, 12
  lea edx, [edx+eax+4]
@@ -124,8 +141,9 @@ failed:
  int 0x80
 .section .data
 active_result: .long 0
-results: .space 104
+results: .space {len(cases)*stride}
 assignments: .space 12
+weapons: .space 312
 mech: .space 2048
 reality: .space 512
 .section .peimage, "awx"
@@ -149,21 +167,21 @@ SECTIONS {
                         '-o', 'fixture', 'fixture.o'], cwd=path, check=True)
         output = subprocess.run([str(path / 'fixture')], cwd=path, check=True,
                                 capture_output=True, timeout=5).stdout
-    if len(output) != 116:
+    if len(output) != size:
         raise ValueError('incomplete native result')
     resolved = []
-    for i, (armor, damage) in enumerate(cases):
-        count = struct.unpack_from('<I', output, i * 52)[0]
-        if count > 4:
+    for i, (region, armor, internal, damage) in enumerate(cases):
+        count = struct.unpack_from('<I', output, i * stride)[0]
+        if count > bound:
             raise ValueError('native damage recorder exceeded bound')
-        records = [list(struct.unpack_from('<3I', output, i * 52 + 4 + j * 12)) for j in range(count)]
-        resolved.append({'armor_index': 4, 'armor_before': armor, 'internal_before': 20,
+        records = [list(struct.unpack_from('<3I', output, i * stride + 4 + j * 12)) for j in range(count)]
+        resolved.append({'armor_index': region, 'armor_before': armor, 'internal_before': internal,
                          'incoming_damage': damage, 'credit_entity': 7, 'queued_records': records})
-    print(json.dumps({'dll_sha256': digest, 'kind': 'armor-resolution',
+    print(json.dumps({'dll_sha256': digest, 'kind': 'armor-resolution-grid' if args.all_regions else 'armor-resolution',
                       'resolver': '0x690500c0', 'assignment': '0x69048100',
                       'substitutions': ['AddDamage bounded recorder', 'synthetic Reality getter'],
                       'cases': resolved,
-                      'absolute_assignments': list(struct.unpack_from('<3I', output, 104)),
+                      'absolute_assignments': list(struct.unpack_from('<3I', output, len(cases)*stride)),
                       'medium_laser': {'weapon_type': 3,
                           'damage': struct.unpack_from('<I', image, 0xb99b4+3*140)[0],
                           'range_bands': list(struct.unpack_from('<6I', image, 0xb99c8+3*140)),

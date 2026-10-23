@@ -19,6 +19,7 @@ type Config struct {
 	ExperimentalPlanetRoomType                int
 	ExperimentalCombatInit                    bool
 	ExperimentalCombatArmorProbe              bool
+	ExperimentalCombatDamage                  bool
 	PlanetRedirect                            bool
 	WorldListen                               string
 }
@@ -37,6 +38,7 @@ func ParseFlags() Config {
 	flag.IntVar(&cfg.ExperimentalPlanetRoomType, "experimental-planet-room-type", -1, "send recovered 0x3e room update after Solaris join with lobby type 1 or 2; -1 disables")
 	flag.BoolVar(&cfg.ExperimentalCombatInit, "experimental-combat-init", false, "send native-fixture-verified Title/COM-4D/Ready command setup after entering combat")
 	flag.BoolVar(&cfg.ExperimentalCombatArmorProbe, "experimental-combat-armor-probe", false, "diagnostic: one non-lethal medium-laser armor update per target; requires experimental-combat-init and trusts reported collisions")
+	flag.BoolVar(&cfg.ExperimentalCombatDamage, "experimental-combat-damage", false, "experimental cumulative COM-4D medium-laser damage with recharge, range and reported-pose envelope checks; requires experimental-combat-init")
 	flag.BoolVar(&cfg.PlanetRedirect, "planet-redirect", false, "experimentally redirect successful planet joins to a second Aries listener")
 	flag.StringVar(&cfg.WorldListen, "world-listen", "127.0.0.1:15001", "secondary Aries listener used with -planet-redirect")
 	flag.Parse()
@@ -44,6 +46,12 @@ func ParseFlags() Config {
 }
 
 func (c Config) Validate() error {
+	if c.ExperimentalCombatDamage && !c.ExperimentalCombatInit {
+		return errors.New("experimental-combat-damage requires experimental-combat-init")
+	}
+	if c.ExperimentalCombatDamage && c.ExperimentalCombatArmorProbe {
+		return errors.New("choose experimental-combat-damage or experimental-combat-armor-probe")
+	}
 	if c.ExperimentalCombatArmorProbe && !c.ExperimentalCombatInit {
 		return errors.New("experimental-combat-armor-probe requires experimental-combat-init")
 	}

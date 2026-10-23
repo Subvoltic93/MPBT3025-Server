@@ -79,6 +79,7 @@ func Run(cfg config.Config) {
 	hub.planetRoomType = cfg.ExperimentalPlanetRoomType
 	hub.experimentalCombatInit = cfg.ExperimentalCombatInit
 	hub.experimentalCombatArmorProbe = cfg.ExperimentalCombatArmorProbe
+	hub.experimentalCombatDamage = cfg.ExperimentalCombatDamage
 	startMissionScheduler(world, hub)
 	if cfg.PlanetRedirect {
 		worldListener, err := net.Listen("tcp", cfg.WorldListen)

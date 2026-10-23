@@ -370,3 +370,11 @@ launch, mission departure, and disconnect. Axis meaning, transformed world coord
 volume/tolerance, and whether a client-reported HitReturn point corresponds to
 a server-validated hit remain open; do not use the collision report alone to
 authorize damage.
+
+## Cumulative laser damage implementation
+
+The new offline state fixture executes visitor0x69073640 and records SetPosition arguments: wireY -> worldX, unsigned three-digit height -> worldY, wireX -> worldZ, scaled by.01. It also runs the original internal initialization loop0x6904129b..0x6904138a and ArmorToInternal0x69004010. The current bootstrap initializes internals `[5,5,7,7,10,7,7,9]`, mapping armor regions to `[0,1,2,3,4,5,6,4,5,6,7]`. Native resolver differential fixtures now cover44 cases across all11 regions, including overflow, transfer and weapon-disable records.
+
+CWeapon Init+0x28 stores `(type-table recharge +1)*2.5`, giving5 for type3. FireWeapon0x69060330 adds this to the Reality time to set the ready deadline, and IsReady0x69060bf0 checks it. GetMaxRange0x69002d00 returns weapon+0x48 (270 for type3); damage is5. The opt-in cumulative mode implements these values and the tested resolver.
+
+The new mode consumes the reported-pose cache for an explicit coarse envelope policy, superseding the earlier diagnostics-only use of that cache. This is not recovered mesh geometry: horizontal radius10m and height-1..20m, plus pose age<=2s and range<=270m. Damage totals and recharge are server owned, but movement and the reported collision part remain client supplied. Piloting target remains4; heat, criticals, independent aim/occlusion, ammunition and results remain open. Live repeated damage/depletion delivery is pending at this implementation checkpoint.

@@ -1,0 +1,772 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "kind": "armor-resolution-grid",
+  "resolver": "0x690500c0",
+  "assignment": "0x69048100",
+  "substitutions": [
+    "AddDamage bounded recorder",
+    "synthetic Reality getter"
+  ],
+  "cases": [
+    {
+      "armor_index": 0,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          21,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 0,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          21,
+          0,
+          7
+        ],
+        [
+          32,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 0,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          32,
+          0,
+          7
+        ],
+        [
+          41,
+          0,
+          7
+        ],
+        [
+          26,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 0,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          26,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 1,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          22,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 1,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          22,
+          0,
+          7
+        ],
+        [
+          33,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 1,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          33,
+          0,
+          7
+        ],
+        [
+          40,
+          0,
+          7
+        ],
+        [
+          27,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 1,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          27,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 2,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          23,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 2,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          23,
+          0,
+          7
+        ],
+        [
+          34,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 2,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          34,
+          0,
+          7
+        ],
+        [
+          26,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 2,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          26,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 3,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          24,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 3,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          24,
+          0,
+          7
+        ],
+        [
+          35,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 3,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          35,
+          0,
+          7
+        ],
+        [
+          27,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 3,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          27,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 4,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          25,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 4,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          25,
+          0,
+          7
+        ],
+        [
+          36,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 4,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          36,
+          0,
+          7
+        ],
+        [
+          42,
+          0,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 4,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          36,
+          0,
+          7
+        ],
+        [
+          42,
+          0,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 5,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          26,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 5,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          26,
+          0,
+          7
+        ],
+        [
+          37,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 5,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          37,
+          0,
+          7
+        ],
+        [
+          25,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 5,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          25,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 6,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          27,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 6,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          27,
+          0,
+          7
+        ],
+        [
+          38,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 6,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          38,
+          0,
+          7
+        ],
+        [
+          25,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 6,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          25,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 7,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          28,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 7,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          28,
+          0,
+          7
+        ],
+        [
+          36,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 7,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          36,
+          0,
+          7
+        ],
+        [
+          42,
+          0,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 7,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          36,
+          0,
+          7
+        ],
+        [
+          42,
+          0,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 8,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          29,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 8,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          29,
+          0,
+          7
+        ],
+        [
+          37,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 8,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          37,
+          0,
+          7
+        ],
+        [
+          28,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 8,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          28,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 9,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          30,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 9,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          30,
+          0,
+          7
+        ],
+        [
+          38,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 9,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          38,
+          0,
+          7
+        ],
+        [
+          28,
+          13,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 9,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          28,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 10,
+      "armor_before": 15,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          31,
+          10,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 10,
+      "armor_before": 3,
+      "internal_before": 20,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          31,
+          0,
+          7
+        ],
+        [
+          39,
+          18,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 10,
+      "armor_before": 0,
+      "internal_before": 3,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          39,
+          0,
+          7
+        ]
+      ]
+    },
+    {
+      "armor_index": 10,
+      "armor_before": 0,
+      "internal_before": 0,
+      "incoming_damage": 5,
+      "credit_entity": 7,
+      "queued_records": [
+        [
+          39,
+          0,
+          7
+        ]
+      ]
+    }
+  ],
+  "absolute_assignments": [
+    10,
+    10,
+    10
+  ],
+  "medium_laser": {
+    "weapon_type": 3,
+    "damage": 5,
+    "range_bands": [
+      45,
+      90,
+      135,
+      180,
+      225,
+      270
+    ],
+    "table_reader": "0x6905f610"
+  },
+  "initial_piloting_target": 4
+}

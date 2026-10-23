@@ -58,11 +58,12 @@ func CombatPeerPosition(entityID byte, clientCommand []byte) ([]byte, error) {
 // Every field is client supplied and not server verified.
 type CombatPosition struct {
 	X, Y       int32
+	Height     int32    // Unsigned three-digit field, in hundredths; native world Y.
 	PoseFields [15]byte // Native unsigned-three field and four signed-three fields.
 }
 
-// ParseClientCombatPositionCommand reads the first two signed coordinates
-// from the native position command. Additional movement fields remain opaque.
+// ParseClientCombatPositionCommand reads the signed planar coordinates and
+// unsigned height. Remaining movement fields are retained as opaque bytes.
 func ParseClientCombatPositionCommand(command []byte) (CombatPosition, error) {
 	if len(command) != 37 || command[0] != '\x27' {
 		return CombatPosition{}, fmt.Errorf("invalid native client position command")
@@ -77,7 +78,17 @@ func ParseClientCombatPositionCommand(command []byte) (CombatPosition, error) {
 		Y: decodeSignedCombatCoordinate(command[5:9]),
 	}
 	copy(position.PoseFields[:], command[9:24])
+	for _, digit := range command[9:12] {
+		position.Height = position.Height*85 + int32(digit-'!')
+	}
 	return position, nil
+}
+
+// WorldPoint follows the original peer visitor's SetPosition argument order:
+// wire Y becomes world X, unsigned height becomes world Y, wire X becomes Z.
+// Coordinates retain hundredths to compare with native HitReturn points.
+func (position CombatPosition) WorldPoint() [3]int32 {
+	return [3]int32{position.Y, position.Height, position.X}
 }
 
 // ClientCombatBatch is the supported part of a native client stream: an

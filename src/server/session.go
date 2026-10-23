@@ -27,11 +27,14 @@ type sessionHub struct {
 	planetRoomType               int // -1 disables the recovered room-update live trial
 	experimentalCombatInit       bool
 	experimentalCombatArmorProbe bool
+	experimentalCombatDamage     bool
+	combatDamageRooms            map[int]*combatDamageRoom
 	combatArmorProbed            map[int]map[byte]bool
 	combatPreparing              map[int]map[string]bool
 	combatEntities               map[int]map[string]byte
-	// Untrusted native position reports retained only for diagnostic correlation.
+	// Client reports support diagnostics and the opt-in damage plausibility policy.
 	combatPositionReports map[int]map[byte]protocol.CombatPosition
+	combatPositionTimes   map[int]map[byte]time.Time
 	combatActive          map[int]bool
 }
 
@@ -107,6 +110,8 @@ func (h *sessionHub) remove(session *liveSession) {
 		delete(h.combatPreparing, presence.location.RoomID)
 		delete(h.combatEntities, presence.location.RoomID)
 		delete(h.combatPositionReports, presence.location.RoomID)
+		delete(h.combatPositionTimes, presence.location.RoomID)
+		delete(h.combatDamageRooms, presence.location.RoomID)
 		delete(h.combatActive, presence.location.RoomID)
 		delete(h.combatArmorProbed, presence.location.RoomID)
 	}
@@ -230,6 +235,8 @@ func (h *sessionHub) publishMissionDeparture(session *liveSession, previous plan
 	delete(h.combatPreparing, previous.location.RoomID)
 	delete(h.combatEntities, previous.location.RoomID)
 	delete(h.combatPositionReports, previous.location.RoomID)
+	delete(h.combatPositionTimes, previous.location.RoomID)
+	delete(h.combatDamageRooms, previous.location.RoomID)
 	delete(h.combatActive, previous.location.RoomID)
 	delete(h.combatArmorProbed, previous.location.RoomID)
 	targets := make([]*liveSession, 0)
@@ -523,6 +530,14 @@ func (h *sessionHub) launchMission(roomID int) {
 		h.combatPositionReports = map[int]map[byte]protocol.CombatPosition{}
 	}
 	delete(h.combatPositionReports, roomID)
+	delete(h.combatPositionTimes, roomID)
+	if h.combatDamageRooms == nil {
+		h.combatDamageRooms = map[int]*combatDamageRoom{}
+	}
+	delete(h.combatDamageRooms, roomID)
+	if h.experimentalCombatDamage {
+		h.combatDamageRooms[roomID] = newCombatDamageRoom(ids)
+	}
 	if h.combatActive == nil {
 		h.combatActive = map[int]bool{}
 	}
@@ -616,9 +631,16 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 			if h.combatPositionReports[roomID] == nil {
 				h.combatPositionReports[roomID] = map[byte]protocol.CombatPosition{}
 			}
-			// This cache is for correlating native pose and HitReturn reports.
-			// Client coordinates remain untrusted and never authorize damage.
+			// Coordinates remain client supplied. The opt-in damage mode uses
+			// them for a coarse plausibility policy, not authoritative collision.
 			h.combatPositionReports[roomID][entityID] = report
+			if h.combatPositionTimes == nil {
+				h.combatPositionTimes = map[int]map[byte]time.Time{}
+			}
+			if h.combatPositionTimes[roomID] == nil {
+				h.combatPositionTimes[roomID] = map[byte]time.Time{}
+			}
+			h.combatPositionTimes[roomID][entityID] = time.Now()
 		}
 	}
 	recipients := make([]*liveSession, 0)
@@ -643,7 +665,9 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 		selection, _ := protocol.ParseClientCombatFire(clientFire)
 		log.Printf("Relay native combat fire in mission %d from %q: weapon slot %d, target entity %d, hit part %d", roomID, presence.callSign, selection.WeaponSlot, selection.TargetEntity, selection.HitPart)
 		echo := false
-		if probe, ok := h.armorProbeForShot(roomID, entityID, selection, clientFire); ok {
+		if damage, ok := h.damageForShot(roomID, entityID, selection, clientFire, time.Now()); ok {
+			fire, echo = damage, true
+		} else if probe, ok := h.armorProbeForShot(roomID, entityID, selection, clientFire); ok {
 			fire, echo = probe, true
 		}
 		fires = append(fires, relayFire{pdu: fire, echo: echo})

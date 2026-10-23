@@ -1,0 +1,257 @@
+package server
+
+import (
+	"bytes"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"mpbt3025/src/protocol/game"
+	"mpbt3025/src/state"
+)
+
+func TestDamageResolverMatchesNativeAllRegions(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-native-armor-resolution-grid.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Cases []struct {
+			Region   int       `json:"armor_index"`
+			Armor    byte      `json:"armor_before"`
+			Internal byte      `json:"internal_before"`
+			Incoming int       `json:"incoming_damage"`
+			Records  [][3]byte `json:"queued_records"`
+		} `json:"cases"`
+	}
+	if err = json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Cases) != 44 {
+		t.Fatal("incomplete native differential grid")
+	}
+	for _, c := range fixture.Cases {
+		mech := combatMechState{}
+		for i := range mech.Armor {
+			mech.Armor[i] = 15
+		}
+		for i := range mech.Internal {
+			mech.Internal[i] = 20
+		}
+		mech.Armor[c.Region] = c.Armor
+		mech.Internal[armorInternal[c.Region]] = c.Internal
+		updates := resolveCombatDamage(&mech, c.Region, c.Incoming, 1, 7)
+		if len(updates) != len(c.Records) {
+			t.Fatalf("region%d armor%d internal%d: updates %v want %v", c.Region, c.Armor, c.Internal, updates, c.Records)
+		}
+		for i, u := range updates {
+			if [3]byte{u.Slot, u.Remaining, u.CreditEntity} != c.Records[i] || u.EntityID != 1 {
+				t.Fatalf("region%d armor%d internal%d: update %v want %v", c.Region, c.Armor, c.Internal, u, c.Records[i])
+			}
+		}
+	}
+}
+
+func TestCombatDamageDefaultsMatchNativeInitialization(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-native-state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Internal [8]byte `json:"commando_internal"`
+		ArmorMap [11]int `json:"armor_to_internal"`
+		Laser    struct {
+			Damage   int     `json:"damage"`
+			Range    int     `json:"max_range"`
+			Recharge float64 `json:"recharge"`
+		} `json:"medium_laser"`
+	}
+	if err = json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	r := newCombatDamageRoom(map[string]byte{"A": 0})
+	if r.Mechs[0].Internal != f.Internal || armorInternal != f.ArmorMap || mediumLaserDamage != f.Laser.Damage || mediumLaserMaxRange != f.Laser.Range*100 || mediumLaserRecharge != time.Duration(f.Laser.Recharge)*time.Second {
+		t.Fatalf("native default mismatch: %+v", f)
+	}
+}
+
+func TestMissConsumesLaserRecharge(t *testing.T) {
+	h, hit, fire, _, now := laserDamageFixture(t)
+	miss := hit
+	miss.TargetEntity = -1
+	if _, ok := h.damageForShot(1, 0, miss, fire, now); ok {
+		t.Fatal("miss did damage")
+	}
+	if _, ok := h.damageForShot(1, 0, hit, fire, now.Add(time.Second)); ok {
+		t.Fatal("miss did not consume recharge")
+	}
+	later := now.Add(mediumLaserRecharge)
+	h.combatPositionTimes[1][0], h.combatPositionTimes[1][1] = later, later
+	if _, ok := h.damageForShot(1, 0, hit, fire, later); !ok {
+		t.Fatal("recharged laser did not fire")
+	}
+}
+
+func laserDamageFixture(t *testing.T) (*sessionHub, protocol.CombatFireSelection, []byte, []byte, time.Time) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "data", "test-fixtures", "combat-live-armor-probe.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Shots []struct {
+			Body string `json:"client_body_hex"`
+		} `json:"shots"`
+	}
+	if err = json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	frames := make([][]byte, 2)
+	poses := map[byte]protocol.CombatPosition{}
+	var fire []byte
+	for i, s := range f.Shots {
+		frames[i], err = hex.DecodeString(s.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		commands, e := protocol.ParseClientCombatData(frames[i])
+		if e != nil {
+			t.Fatal(e)
+		}
+		batch, e := protocol.ParseClientCombatCommands(commands)
+		if e != nil {
+			t.Fatal(e)
+		}
+		poses[byte(i)], err = protocol.ParseClientCombatPositionCommand(batch.Position)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			fire = batch.Fires[0]
+		}
+	}
+	hit, err := protocol.ParseClientCombatFire(fire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	h := newSessionHub()
+	h.experimentalCombatInit = true
+	h.experimentalCombatDamage = true
+	h.combatEntities = map[int]map[string]byte{1: {"Alpha": 0, "Beta": 1}}
+	h.combatDamageRooms = map[int]*combatDamageRoom{1: newCombatDamageRoom(h.combatEntities[1])}
+	h.combatPositionReports = map[int]map[byte]protocol.CombatPosition{1: poses}
+	h.combatPositionTimes = map[int]map[byte]time.Time{1: {0: now, 1: now}}
+	h.combatActive = map[int]bool{1: true}
+	return h, hit, fire, frames[0], now
+}
+
+func TestLaserDamageAccumulatesArmorInternalAndDestruction(t *testing.T) {
+	h, hit, fire, _, now := laserDamageFixture(t)
+	for shot := 0; shot < 5; shot++ {
+		at := now.Add(time.Duration(shot) * mediumLaserRecharge)
+		h.combatPositionTimes[1][0], h.combatPositionTimes[1][1] = at, at
+		p, ok := h.damageForShot(1, 0, hit, fire, at)
+		if !ok {
+			t.Fatalf("shot%d did not damage", shot)
+		}
+		if len(p.Body) == 0 {
+			t.Fatal("empty damage stream")
+		}
+		mech := h.combatDamageRooms[1].Mechs[1]
+		wantArmor := byte(max(15-5*(shot+1), 0))
+		wantInternal := byte(min(10, 25-5*(shot+1)))
+		if mech.Armor[4] != wantArmor || mech.Internal[4] != wantInternal || mech.Destroyed != (shot == 4) {
+			t.Fatalf("shot%d: armor%v internal%v destroyed%t", shot, mech.Armor, mech.Internal, mech.Destroyed)
+		}
+		if _, ok = h.damageForShot(1, 0, hit, fire, at.Add(time.Millisecond)); ok {
+			t.Fatal("duplicate bypassed recharge")
+		}
+	}
+	if _, ok := h.damageForShot(1, 0, hit, fire, now.Add(time.Minute)); ok {
+		t.Fatal("damaged destroyed target")
+	}
+}
+
+func TestLaserDamageRejectsImplausibleAndStaleReports(t *testing.T) {
+	for _, name := range []string{"disabled", "self", "missing", "stale", "future", "far-hit", "below-ground", "too-high", "out-of-range", "wrong-weapon", "destroyed-shooter", "disabled-weapon", "miss"} {
+		t.Run(name, func(t *testing.T) {
+			h, hit, fire, _, now := laserDamageFixture(t)
+			switch name {
+			case "disabled":
+				h.experimentalCombatDamage = false
+			case "self":
+				hit.TargetEntity = 0
+			case "missing":
+				delete(h.combatPositionReports[1], 1)
+			case "stale":
+				h.combatPositionTimes[1][1] = now.Add(-3 * time.Second)
+			case "future":
+				h.combatPositionTimes[1][1] = now.Add(time.Second)
+			case "far-hit":
+				hit.HitPoint[0] += 10000
+			case "below-ground":
+				hit.HitPoint[1] = 0
+			case "too-high":
+				hit.HitPoint[1] += 3000
+			case "out-of-range":
+				p := h.combatPositionReports[1][0]
+				p.Y = 100000
+				h.combatPositionReports[1][0] = p
+			case "wrong-weapon":
+				hit.WeaponSlot = 1
+			case "destroyed-shooter":
+				m := h.combatDamageRooms[1].Mechs[0]
+				m.Destroyed = true
+				h.combatDamageRooms[1].Mechs[0] = m
+			case "disabled-weapon":
+				m := h.combatDamageRooms[1].Mechs[0]
+				m.WeaponDisabled[0] = true
+				h.combatDamageRooms[1].Mechs[0] = m
+			case "miss":
+				hit.TargetEntity = -1
+			}
+			if _, ok := h.damageForShot(1, 0, hit, fire, now); ok {
+				t.Fatal("invalid report caused damage")
+			}
+			if h.combatDamageRooms[1].Mechs[1].Armor != protocol.CombatCommandoArmor() {
+				t.Fatal("rejection mutated target")
+			}
+		})
+	}
+}
+
+func TestCumulativeDamageEchoesSameStreamAndResetsOnDisconnect(t *testing.T) {
+	h, _, _, body, _ := laserDamageFixture(t)
+	var self, peer, other []protocol.PDU
+	a := &liveSession{sendGamePDU: func(p protocol.PDU) error { self = append(self, p); return nil }}
+	b := &liveSession{sendGamePDU: func(p protocol.PDU) error { peer = append(peer, p); return nil }}
+	c := &liveSession{sendGamePDU: func(p protocol.PDU) error { other = append(other, p); return nil }}
+	h.sessions[a] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+	h.sessions[b] = planetPresence{callSign: "Beta", location: state.Location{RoomID: 1}}
+	h.sessions[c] = planetPresence{callSign: "Other", location: state.Location{RoomID: 2}}
+	h.combatActive[1] = false
+	h.relayCombatCommands(a, body)
+	if len(self)+len(peer)+len(other) != 0 {
+		t.Fatal("damage before native preparation")
+	}
+	h.combatActive[1] = true
+	h.relayCombatCommands(a, body)
+	if len(self) != 1 || len(peer) != 2 || len(other) != 0 || !bytes.Equal(self[0].Body, peer[1].Body) {
+		t.Fatal("damage queue/fire recipients or ordering differ")
+	}
+	if h.combatDamageRooms[1].Mechs[1].Armor[4] != 10 {
+		t.Fatal("server armor state not committed")
+	}
+	h.relayCombatCommands(a, body)
+	if len(self) != 1 || h.combatDamageRooms[1].Mechs[1].Armor[4] != 10 {
+		t.Fatal("replay applied damage")
+	}
+	h.remove(b)
+	if len(h.combatDamageRooms) != 0 || len(h.combatPositionTimes) != 0 {
+		t.Fatal("disconnect retained combat damage/pose timing")
+	}
+}

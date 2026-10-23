@@ -524,3 +524,34 @@ populated `0x97` replies, or unrelated servers were used or changed. Chat and
 both Ready states were visibly verified in the earlier checkpoint; the
 last-ready-pilot cancellation case was not retested in this clean combat
 entry.
+
+## Cumulative laser damage implementation checkpoint
+
+Resumed from `8a49a76` for repeatable combat damage. The two prior clients had
+exited; the only test process was server414593 on15011. Offline native visitor
+execution now confirms world coordinates are `(wireY, unsignedHeight, wireX)`
+in hundredths. `native-combat-state-fixture.py` records original SetPosition
+arguments, original eight-region internal initialization, and ArmorToInternal.
+The stock bootstrap's internal values are `[5,5,7,7,10,7,7,9]`. Native weapon
+Init/IsReady/FireWeapon and GetMaxRange establish medium-laser damage5,
+recharge5 seconds and maximum range270m.
+
+Added opt-in `-experimental-combat-damage` (requires combat init; mutually
+exclusive with the older one-shot armor probe). It owns cumulative armor,
+internals, weapon-disable state, core/head destruction state and laser recharge
+for the initialized COM-4Ds. The resolver is compared to44 original native
+resolver cases covering all armor regions, depletion, shared rear/front
+internals, transfer and weapon-disable records. Assignments precede fire in
+one stream delivered to both clients. Five accepted center-torso laser hits
+advance armor15->10->5->0, then internals10->5->0.
+
+Fresh reported poses (at most2 seconds old), authenticated room entities,
+270m range and an explicit experimental target envelope are required. The
+envelope is radius10m horizontally and height-1..20m relative to reported
+terrain height. These bounds are a trial policy, not recovered collision mesh
+geometry. The collision part and movement still depend on client reports;
+occlusion, independent aiming, heat, criticals, ammunition weapons, piloting
+target evolution and match results remain unfinished. Piloting target stays4.
+The new mode is disabled by default. Native cumulative damage/destruction
+delivery is not yet live-verified at this checkpoint. Save this implementation
+checkpoint before restarting only15011 for a bounded two-client trial.

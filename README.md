@@ -143,3 +143,9 @@ Native damage research now establishes absolute remaining armor assignments and 
 ## Controlled armor diagnostic
 
 `-experimental-combat-armor-probe` requires `-experimental-combat-init` and is disabled by default. It trusts a valid room-scoped medium-laser collision report and applies one non-lethal 5-point stock armor reduction per target. Both clients receive the same absolute assignment followed by fire, updating the own-Mech and target damage panels together. The October 23 trial verified both directions and confirmed later shots add no further diagnostic damage. This is a receive/routing check; collision geometry, repeated damage, internal/critical damage, destruction and match results still need server rules.
+
+## Experimental cumulative laser damage
+
+Add `-experimental-combat-damage` together with `-experimental-combat-init` for repeated stock COM-4D medium-laser damage. It cannot be combined with `-experimental-combat-armor-probe`. The server owns armor/internal totals and recharge, requires recent reported poses, checks the native 270m range and a coarse target envelope, and sends identical assignment/fire streams to both clients. Native fixture and server tests cover depletion, internal transfer, weapon disable and core/head destruction state. Live cumulative damage delivery is pending at the implementation checkpoint.
+
+This mode still trusts client movement and the collision part within an experimental 10m horizontal / -1..20m height envelope. Aim, occlusion, heat, criticals, piloting-target changes, ammunition weapons and match results remain unfinished. See the latest [damage checkpoint](research/notes/solaris-session-2026-10-23.md).

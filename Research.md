@@ -23,7 +23,7 @@ The project layout borrows the broad separation used by [KenzHuman’s `mpbt-ser
 
 **Implemented but not fully validated end to end:** character creation persistence semantics, House chat, full campaign navigation, economy screens, authoritative room-count behavior across reconnect and multi-room cases, and stable reconnect behavior.
 
-**Unknown or incomplete:** the meaning of every field in planet-state records; the client’s complete split-buffer reassembly behavior; full Team chat semantics; complete native pose-field semantics, world-axis transforms, collision volume/tolerance, and correspondence between client-reported HitReturn points and validated hits; authoritative movement, hit detection, damage, destruction, match end, score, rank, and rewards. The server now caches reported X/Y and 15 opaque native pose-field bytes per authenticated entity for each active mission, solely for diagnostics.
+**Unknown or incomplete:** the meaning of every field in planet-state records; the client’s complete split-buffer reassembly behavior; full Team chat semantics; complete native pose-field semantics, world-axis transforms, collision volume/tolerance, and correspondence between client-reported HitReturn points and validated hits; authoritative movement, hit detection, damage, destruction, match end, score, rank, and rewards. The server now caches reported X/Y and 15 opaque native pose-field bytes per authenticated entity for each active mission, for diagnostics and the opt-in cumulative damage plausibility policy.
 
 ## Room roster and side labels
 
@@ -56,3 +56,9 @@ Native `FillMech` scales setup coordinates by 0.01 and computes facing toward th
 ## Live armor synchronization
 
 The controlled diagnostic trial emitted center-torso armor 15 → 10 for BetaPilot and then Subvoltic. Both own armor and the opposing target panel changed gray to green, and both session traces contain identical assignment/fire streams. A third laser report relayed with no new assignment. Clients remained stable. Native type-3 weapon data supplies damage 5 and range 270m; the Mech constructor supplies initial piloting target 4. The diagnostic intentionally allows only one non-lethal update per target and trusts collision geometry. See the latest [handoff checkpoint](research/notes/solaris-session-2026-10-23.md) for local captures and trace paths.
+
+## Cumulative medium-laser damage implementation
+
+Offline execution of the original peer visitor confirms `(wireY, unsignedHeight, wireX)` world axes. Original internal initialization gives `[5,5,7,7,10,7,7,9]` for the current native bootstrap. A44-case native resolver grid establishes all armor-region internal mappings, depletion, transfer and weapon-disable records. Native weapon code establishes damage5, recharge5s and maximum range270m.
+
+The opt-in cumulative mode owns those damage totals and recharge; pose freshness, range and a declared trial envelope reject implausible reports. It still depends on client movement/collision parts and does not establish independent collision authority. Live repeated damage/destruction is pending; the [October23 checkpoint](research/notes/solaris-session-2026-10-23.md) records the trial boundary.

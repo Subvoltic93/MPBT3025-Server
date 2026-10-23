@@ -10,3 +10,15 @@ func TestArmorProbeRequiresNativeCombatSetup(t *testing.T) {
 		}
 	}
 }
+
+func TestCumulativeDamageRequiresSetupAndExcludesOneShotProbe(t *testing.T) {
+	for _, tc := range []struct{ init, damage, probe, valid bool }{
+		{false, true, false, false}, {true, true, false, true}, {true, true, true, false},
+	} {
+		err := (Config{ExperimentalPlanetRoomType: -1, ExperimentalCombatInit: tc.init,
+			ExperimentalCombatDamage: tc.damage, ExperimentalCombatArmorProbe: tc.probe}).Validate()
+		if (err == nil) != tc.valid {
+			t.Fatalf("%+v: %v", tc, err)
+		}
+	}
+}

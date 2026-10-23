@@ -1,0 +1,50 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "substitutions": [
+    "synthetic Reality/GetMech",
+    "SetPosition argument recorder",
+    "return at end of internal initialization loop"
+  ],
+  "peer_position": {
+    "visitor": "0x69073640",
+    "set_position": "0x69045920",
+    "wire_x": 12345,
+    "wire_y": -54321,
+    "wire_height": 13287,
+    "entity": 1,
+    "world_xyz": [
+      -543.2099878583103,
+      132.86999703012407,
+      123.44999724067748
+    ]
+  },
+  "commando_internal": [
+    5,
+    5,
+    7,
+    7,
+    10,
+    7,
+    7,
+    9
+  ],
+  "armor_to_internal": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    4,
+    5,
+    6,
+    7
+  ],
+  "medium_laser": {
+    "damage": 5,
+    "max_range": 270,
+    "recharge": 5.0,
+    "recharge_source": "Init +0x28; FireWeapon sets time + recharge; IsReady checks deadline"
+  }
+}

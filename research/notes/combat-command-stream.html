@@ -375,6 +375,11 @@ point, and a regression decodes both original captured frames. This confirms
 the point's source and scale; it is still client supplied. Compare it against
 authenticated-room positions and recover the coordinate axes and native hit
 tolerance before using it to authorize damage.</p>
+<p><code>ParseClientCombatPositionCommand</code> decodes the first two signed coordinates of
+the same native <code>0x27</code> command. The regression reads both from the original
+saved <code>0x81</code> frames as <code>(0,10000)</code> and <code>(0,-10000)</code>. Neither that decoder nor
+the fire-point parser changes relay behavior or promotes either report to
+authoritative state.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

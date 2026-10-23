@@ -331,6 +331,12 @@ HitReturn coordinates, not that they prove a hit. Next compare them with
 authenticated-room positions and recover axes/tolerance before authorizing
 damage. No live behavior or process state changed; publish this checkpoint
 before any new native trial.</p>
+<p>Added <code>ParseClientCombatPositionCommand</code> for the first two signed coordinates
+in native <code>0x27</code>. The armor-probe regression now decodes position and hit point
+from each saved frame: shooter coordinates <code>(0,10000)</code> / <code>(0,-10000)</code> and
+reported points <code>(-9936,13891,0)</code> / <code>(9930,13891,0)</code>, all before converting
+hundredths to world units. These outputs document the distinct values but do
+not imply a validated ray or known target center. Full overlay tests pass.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

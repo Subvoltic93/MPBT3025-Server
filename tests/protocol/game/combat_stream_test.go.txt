@@ -265,6 +265,7 @@ func TestLiveFireReportIncludesNativeHitReturnPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := [][3]int32{{-9936, 13891, 0}, {9930, 13891, 0}}
+	wantPosition := []CombatPosition{{X: 0, Y: 10000}, {X: 0, Y: -10000}}
 	if len(fixture.Shots) != len(want) {
 		t.Fatalf("live shot count = %d", len(fixture.Shots))
 	}
@@ -280,6 +281,10 @@ func TestLiveFireReportIncludesNativeHitReturnPoint(t *testing.T) {
 		batch, err := ParseClientCombatCommands(commands)
 		if err != nil || len(batch.Fires) != 1 {
 			t.Fatalf("shooter %d batch = %+v, %v", shot.ShooterEntity, batch, err)
+		}
+		position, err := ParseClientCombatPositionCommand(batch.Position)
+		if err != nil || position != wantPosition[i] {
+			t.Fatalf("shooter %d position = %+v, %v; want %+v", shot.ShooterEntity, position, err, wantPosition[i])
 		}
 		selection, err := ParseClientCombatFire(batch.Fires[0])
 		if err != nil || !selection.HasHitPoint || selection.HitPoint != want[i] {

@@ -36,6 +36,12 @@ type planetPresence struct {
 	houseID  state.HouseID
 }
 
+// Solaris staging rooms belong to a city. Their roster includes that city's
+// seated pilots, but must not include pilots from another city's staging area.
+func samePresenceArea(a, b state.Location) bool {
+	return a.PlanetID == b.PlanetID && (a.PlanetID != state.SolarisPlanetID || a.CityID == b.CityID)
+}
+
 func solarisLobbyRoomID(cityID int) protocol.RoomID {
 	return protocol.RoomID{Number: uint32(121000 + cityID), Host: "local"}
 }
@@ -100,7 +106,7 @@ func (h *sessionHub) remove(session *liveSession) {
 	others := make([]*liveSession, 0, len(h.sessions))
 	if joined {
 		for other, otherPresence := range h.sessions {
-			if otherPresence.location.PlanetID == presence.location.PlanetID && (otherPresence.location.RoomID == 0 || otherPresence.location.RoomID == presence.location.RoomID) {
+			if samePresenceArea(otherPresence.location, presence.location) && (otherPresence.location.RoomID == 0 || otherPresence.location.RoomID == presence.location.RoomID) {
 				others = append(others, other)
 			}
 		}
@@ -258,7 +264,7 @@ func (h *sessionHub) publishPlanetJoin(session *liveSession, pilot state.Pilot) 
 	existing := make([]planetPresence, 0, len(h.sessions))
 	existingSessions := make([]*liveSession, 0, len(h.sessions))
 	for other, presence := range h.sessions {
-		if other != session && presence.location.PlanetID == pilot.Location.PlanetID {
+		if other != session && samePresenceArea(presence.location, pilot.Location) {
 			existing = append(existing, presence)
 			existingSessions = append(existingSessions, other)
 		}
@@ -345,7 +351,7 @@ func (h *sessionHub) publishMissionJoin(session *liveSession, pilot state.Pilot,
 	h.sessions[session] = planetPresence{callSign: pilot.CallSign, location: pilot.Location, houseID: pilot.House}
 	peers := make(map[*liveSession]planetPresence)
 	for other, presence := range h.sessions {
-		if other != session && presence.location.PlanetID == pilot.Location.PlanetID {
+		if other != session && samePresenceArea(presence.location, pilot.Location) {
 			peers[other] = presence
 		}
 	}

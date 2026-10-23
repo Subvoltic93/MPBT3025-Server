@@ -1226,3 +1226,12 @@ This suggests that a correctly targeted client fire report can trigger native
 hit behavior, but needs a controlled hit trial and server-side validation.
 The server currently relays the authenticated sender ID and client-reported
 weapon/target data; no authoritative hit validation or victory/results loop.
+
+
+## Continuation after repository move — 2026-10-23
+
+The active server checkout is now `/home/sebulba/dev/MPBT3025-Server`, with
+source in `src/` and overlay tests in `tests/`. See the
+[October 23 checkpoint](solaris-session-2026-10-23.md) for the current city-roster
+correction, tests, native verification and remaining work. Earlier runtime paths
+and process IDs in this historical note are not current.

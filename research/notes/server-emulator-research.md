@@ -279,3 +279,12 @@ Local `client/research/raw/` contains `strings -a -t x`, `objdump -p`, executabl
 disassembly and manual text used during this pass. These are generated working
 materials, not recovered source code. Keep original assets and private session
 records out of any future public emulator release.
+
+
+## Continuation after repository move — 2026-10-23
+
+The active server checkout is now `/home/sebulba/dev/MPBT3025-Server`, with
+source in `src/` and overlay tests in `tests/`. See the
+[October 23 checkpoint](solaris-session-2026-10-23.md) for the current city-roster
+correction, tests, native verification and remaining work. Earlier runtime paths
+and process IDs in this historical note are not current.

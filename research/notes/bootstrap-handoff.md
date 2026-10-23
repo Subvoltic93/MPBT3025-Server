@@ -1672,3 +1672,12 @@ Current isolated server: `runtime/mpbt3025-combat-info`, PID 201687,
 B stopped. Unrelated listeners 15004 and 15008 untouched. Latest all-Go tests
 passed after joining/CombatInfo changes. Default server path still needs
 promotion of verified staging behavior after mission validation.
+
+
+## Continuation after repository move — 2026-10-23
+
+The active server checkout is now `/home/sebulba/dev/MPBT3025-Server`, with
+source in `src/` and overlay tests in `tests/`. See the
+[October 23 checkpoint](solaris-session-2026-10-23.md) for the current city-roster
+correction, tests, native verification and remaining work. Earlier runtime paths
+and process IDs in this historical note are not current.

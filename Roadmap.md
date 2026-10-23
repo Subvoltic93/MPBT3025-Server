@@ -1,13 +1,13 @@
 # Roadmap
 
-The goal is a usable local multiplayer server with a clear boundary between confirmed behavior and prototype rules. Progress below reflects the implementation and existing live-session notes; room counts and side labels remain open because a mismatch has been reported.
+The goal is a usable local multiplayer server with a clear boundary between confirmed behavior and prototype rules. Progress below reflects implementation and live-session evidence through October 23. Same-city counts and side labels were reconfirmed; city isolation is regression-tested and still needs a native trial across two cities.
 
 | Stage | Status | Outcome |
 | --- | --- | --- |
 | Aries listener and game PDU framing | Done | Local TCP bootstrap and packet codecs are separated into protocol packages. |
 | Pilot and campaign state | Partial | JSON persistence, pilot records, Solaris locations, rooms, seats, and prototype campaign rules exist. Creation and progression need full client-screen verification. |
-| Solaris staging and occupants | Partial | Two-client presence was demonstrated. Recheck room counts, stale occupants, reconnects, and Alpha/Beta labels across join/leave cases. |
-| Mission readiness and launch | Demonstrated | Seat selection, readiness, countdown, preparation barrier, and native combat entry were exercised with two clients. |
+| Solaris staging and occupants | Partial | Two-client counts, Alpha/Beta labels, Back/rejoin and settled rosters were reconfirmed. Cross-city isolation is fixed and regression-tested; native cross-city/reconnect cases remain. |
+| Mission readiness and launch | Demonstrated | Seat selection, readiness/cancellation, countdown, preparation barrier, and native combat entry were reconfirmed with two clients on October 23. |
 | Combat command relay | Partial | Room-scoped position and fire relay works in recorded trials. The server does not yet own authoritative simulation. |
 | Combat resolution and results | Next | Validate targeted hit messages, apply damage consistently, detect destruction/end state, and return native results. |
 | Campaign services and economy | Later | Connect battle results to rank, credits, ownership, salary, and client-facing screens. |
@@ -16,11 +16,10 @@ The goal is a usable local multiplayer server with a clear boundary between conf
 
 ## Next work
 
-1. Reproduce the reported Solaris count/team-label mismatch with two clients and inspect the same session’s packet trace.
-2. Compare roster updates, room occupancy fields, and seat counts after each join, leave, disconnect, reconnect, and side assignment. Correct the source of truth and the Solaris defender/attacker field mapping together.
-3. Re-run the two-client mission launch and combat relay after the roster correction.
-4. Trace a controlled shot through the client/server command stream, determine whether the client reports a hit or only a fire event, and identify the smallest server-owned damage step.
-5. Implement match completion only after hit/damage behavior and the client’s result-message layout are supported by evidence.
+1. Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.
+2. Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.
+3. Trace a controlled shot through the client/server command stream, determine whether the client reports a hit or only a fire event, and identify the smallest server-owned damage step.
+4. Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.
 
 ## Completion criteria
 

@@ -8,9 +8,9 @@ The organization takes inspiration from the separation of source, research, and 
 
 ## Current state
 
-The server can bootstrap the client, persist local pilot/world state as JSON, publish planet and Solaris room state, route live occupants and chat, coordinate mission seats and countdown, and relay observed combat position/fire commands. Authoritative damage, match completion, and results are still unfinished. The Solaris room count and Alpha/Beta display mapping have a reported regression and remain under verification.
+The server can bootstrap the client, persist local pilot/world state as JSON, publish planet and Solaris room state, route live occupants and chat, coordinate mission seats and countdown, and relay observed combat position/fire commands. Authoritative damage, match completion, and results are still unfinished. The October 23 trial reconfirmed same-city Solaris counts, Alpha/Beta seats, Back/rejoin, chat filtering, ready/cancel behavior, and two-client native combat entry. Solaris staging rosters now exclude other cities; that isolation has a regression test, while a native trial with pilots in separate cities remains pending.
 
-See [Research.md](Research.md) for evidence and open questions, [Roadmap.md](Roadmap.md) for planned work, and [Protocol.md](Protocol.md) for listener addresses, framing, handled messages, and the current connection flow. The [implementation handoff notes](research/notes/bootstrap-handoff.md) record detailed development history. The game manual and SDS are indexed in [`reference/README.md`](reference/README.md).
+See [Research.md](Research.md) for evidence and open questions, [Roadmap.md](Roadmap.md) for planned work, and [Protocol.md](Protocol.md) for listener addresses, framing, handled messages, and the current connection flow. The [October 23 session checkpoint](research/notes/solaris-session-2026-10-23.md) records the moved workspace, current trial, and verification limits. The [implementation handoff notes](research/notes/bootstrap-handoff.md) record detailed development history. The game manual and SDS are indexed in [`reference/README.md`](reference/README.md).
 
 ## Run
 

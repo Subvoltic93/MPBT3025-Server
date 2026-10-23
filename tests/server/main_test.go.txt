@@ -823,10 +823,18 @@ func assertFullPlanetKeys(t *testing.T, pdu protocol.PDU) {
 	}
 }
 
-func TestPlanetStateOwnerSnapshotMatchesClientCache(t *testing.T) {
+func TestPlanetStateOwnerSnapshotEncodesHouseIDs(t *testing.T) {
 	world, err := state.DefaultWorld()
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Exercise the wire mapping explicitly; optional operator seeds and the
+	// public synthetic seed need not match the original client's campaign.
+	owners := map[int]state.HouseID{1: state.HouseKurita, 26: state.HouseLiao, 46: state.HouseMarik, 71: state.HouseSteiner, 83: state.HouseSteiner, 96: state.HouseDavion, 121: ""}
+	for id, owner := range owners {
+		planet := world.Planets[id]
+		planet.Owner = owner
+		world.Planets[id] = planet
 	}
 	pdu := planetStateOwnerSnapshot(world, 7)
 	assertFullPlanetKeys(t, pdu)

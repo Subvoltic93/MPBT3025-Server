@@ -14,8 +14,8 @@ The project layout borrows the broad separation used by [KenzHuman’s `mpbt-ser
 - The connection path handles the observed local startup exchange, configuration synchronization, pilot creation request, room and planet joins, room exit, settings responses, chat, ready/mech selection, combat initialization, and combat command relay.
 - Campaign and session state are modeled separately from packet codecs. The current store persists the world as JSON and clears transient room presence on startup. `src/db/` is only a placeholder; no database driver or schema is active.
 - The default world generator creates 121 generically named planets, Solaris city/mission staging, and prototype campaign rules. Operators can load external seed tables through `MPBT3025_SEED_DIR`; those tables are not part of this source tree. Many non-Solaris values such as adjacency, rank progression, and economy remain approximations.
-- Live session membership is separate from persisted pilot records, so a disconnected pilot should not remain in a visible roster. Mission counts are calculated from occupied or AI seats; the Solaris list maps defender seats to Alpha and attacker seats to Beta in the current implementation.
-- Historical two-client trials reached Solaris staging and native combat. Position and fire commands were relayed. The current project page records those demonstrations, while the reported room counts and team labels are explicitly being rechecked.
+- Live session membership is separate from persisted pilot records, so a disconnected pilot should not remain in a visible roster. Solaris staging membership is restricted to the same city, including that city's seated pilots. Mission counts are calculated from occupied or AI seats; the Solaris list maps defender seats to Alpha and attacker seats to Beta in the current implementation.
+- Historical two-client trials reached Solaris staging and native combat. Position and fire commands were relayed. The October 23 trial reconfirmed the same-city counts, team labels, Back/rejoin, chat filtering, and ready/cancel behavior after the repository move.
 
 ## Confidence boundaries
 
@@ -29,7 +29,9 @@ The project layout borrows the broad separation used by [KenzHuman’s `mpbt-ser
 
 The server has two related sources of room information. Connected planet occupants are kept in the session hub; mission occupancy and seat sides come from the persisted world store while a connection is active. The intended rule is that lobby player counts come from live sessions, and mission player counts come from occupied seats. Solaris wire fields reverse the human-facing Alpha/Beta label order used for defender and attacker seats.
 
-The user has reported that counts or players displayed in rooms may still be wrong and that team labels may be off. The code’s intended mapping is therefore a hypothesis requiring a fresh multi-client check against all of these cases: join staging, join a mission, leave for staging, disconnect, reconnect, two players on the same side, and one player on each side. The current display should not be treated as verified solely because the server-side model computes counts.
+The October 23 inspection found a remaining source-level error: city-specific staging RoomIDs used a planet-wide peer selection. That could include occupants from another Solaris city in the roster/count and send arrival/departure events across city boundaries. A failing regression reproduced the leak, and a shared presence-area check now restricts Solaris membership to planet plus city. The test also checks the complete roster snapshot and disconnect isolation.
+
+The native trial used two pilots in city 1 and confirmed one-pilot Alpha counts/preview, empty counts after Back, both pilots in the settled staging roster, and two correctly labeled mission seats. All reached the peer; Team and House stayed with the sender for opposite sides and unassigned Houses. Both Ready states and cancellation rendered correctly; a second countdown released both clients into active native combat cockpits. This does not demonstrate native cross-city navigation or same-side/assigned-House delivery. See the [October 23 checkpoint](research/notes/solaris-session-2026-10-23.md) for exact trial paths and limitations.
 
 ## Evidence and local material
 

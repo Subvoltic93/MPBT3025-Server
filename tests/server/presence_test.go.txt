@@ -280,3 +280,41 @@ func TestLeavingMissionClearsNativeSeatBeforeLobbyTransition(t *testing.T) {
 		t.Fatal("departing client did not get the updated previous mission")
 	}
 }
+
+func TestSolarisStagingRosterAndCountStayWithinCity(t *testing.T) {
+	hub := newSessionHub()
+	hub.planetRoomType = 1
+	var firstMessages, secondMessages []protocol.PDU
+	first := &liveSession{sendGamePDU: func(p protocol.PDU) error { firstMessages = append(firstMessages, p); return nil }}
+	second := &liveSession{sendGamePDU: func(p protocol.PDU) error { secondMessages = append(secondMessages, p); return nil }}
+	hub.publishPlanetJoin(first, state.Pilot{CallSign: "CityOne", Location: state.Location{PlanetID: 121, CityID: 1}})
+	firstMessages = nil
+	hub.publishPlanetJoin(second, state.Pilot{CallSign: "CityTwo", Location: state.Location{PlanetID: 121, CityID: 2}})
+	if len(firstMessages) != 0 {
+		t.Fatalf("another city's arrival changed the first city's roster: %#v", firstMessages)
+	}
+	room := protocol.RoomInfo{
+		ID: solarisLobbyRoomID(2), Name: "Solaris", Stage: solarisLobbyRoomID(2),
+		Occupancy: 1, Capacity: 100, Type: 1, TotalOccupancy: 1,
+		AllowPlayerRooms: true, MaxRank: 255, PlanetID: 121, Visible: true,
+	}
+	if len(secondMessages) == 0 || !bytes.Equal(secondMessages[0].Body, protocol.RoomUpdate(1, true, room).Body) {
+		t.Fatal("city lobby count includes occupants from another city")
+	}
+	var snapshot *protocol.PDU
+	for i := range secondMessages {
+		if secondMessages[i].ID == 0x3b {
+			snapshot = &secondMessages[i]
+		}
+		if bytes.Contains(secondMessages[i].Body, []byte("CityOne")) {
+			t.Fatal("another city's pilot leaked into the new lobby roster")
+		}
+	}
+	if snapshot == nil || !bytes.Equal(snapshot.Body, protocol.UpdateOccupants(room, []string{"CityTwo"}).Body) {
+		t.Fatal("city lobby snapshot does not match its membership and count")
+	}
+	hub.remove(second)
+	if len(firstMessages) != 0 {
+		t.Fatal("another city's disconnect changed the first city's roster")
+	}
+}

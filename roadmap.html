@@ -20,7 +20,7 @@
 <a href="roadmap.html" class="current" aria-current="page">Roadmap</a>
 <a href="project-files.html">Project files</a></nav>
   <main><article class="document"><h1>Roadmap</h1>
-<p>The goal is a usable local multiplayer server with a clear boundary between confirmed behavior and prototype rules. Progress below reflects the implementation and existing live-session notes; room counts and side labels remain open because a mismatch has been reported.</p>
+<p>The goal is a usable local multiplayer server with a clear boundary between confirmed behavior and prototype rules. Progress below reflects implementation and live-session evidence through October 23. Same-city counts and side labels were reconfirmed; city isolation is regression-tested and still needs a native trial across two cities.</p>
 <table>
 <thead>
 <tr>
@@ -43,12 +43,12 @@
 <tr>
 <td>Solaris staging and occupants</td>
 <td>Partial</td>
-<td>Two-client presence was demonstrated. Recheck room counts, stale occupants, reconnects, and Alpha/Beta labels across join/leave cases.</td>
+<td>Two-client counts, Alpha/Beta labels, Back/rejoin and settled rosters were reconfirmed. Cross-city isolation is fixed and regression-tested; native cross-city/reconnect cases remain.</td>
 </tr>
 <tr>
 <td>Mission readiness and launch</td>
 <td>Demonstrated</td>
-<td>Seat selection, readiness, countdown, preparation barrier, and native combat entry were exercised with two clients.</td>
+<td>Seat selection, readiness/cancellation, countdown, preparation barrier, and native combat entry were reconfirmed with two clients on October 23.</td>
 </tr>
 <tr>
 <td>Combat command relay</td>
@@ -79,11 +79,10 @@
 </table>
 <h2>Next work</h2>
 <ol>
-<li>Reproduce the reported Solaris count/team-label mismatch with two clients and inspect the same session’s packet trace.</li>
-<li>Compare roster updates, room occupancy fields, and seat counts after each join, leave, disconnect, reconnect, and side assignment. Correct the source of truth and the Solaris defender/attacker field mapping together.</li>
-<li>Re-run the two-client mission launch and combat relay after the roster correction.</li>
+<li>Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.</li>
+<li>Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.</li>
 <li>Trace a controlled shot through the client/server command stream, determine whether the client reports a hit or only a fire event, and identify the smallest server-owned damage step.</li>
-<li>Implement match completion only after hit/damage behavior and the client’s result-message layout are supported by evidence.</li>
+<li>Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.</li>
 </ol>
 <h2>Completion criteria</h2>
 <p>The multiplayer loop is complete when two clients can enter a mission, receive correct roster and team displays, move and fire, see consistent hit and damage outcomes, and return to a stable result screen with persisted rewards. Each step must be repeatable from a clean local world snapshot and trace.</p>

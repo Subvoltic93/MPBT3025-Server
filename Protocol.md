@@ -20,7 +20,7 @@ The direct launch passes `aol:<server-host>:<server-port>:key:<local-key>` to `B
 
 This direct path bypasses the retired EA/GILS sign-in and launch service. The local key is only a development connection value; it is not an EA credential, and the emulator does not validate EA accounts or tickets. The client launcher and game files remain in a separate local client workspace and are not part of this server repository.
 
-The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-combat-fire.json` and `runtime/traces/native-combat-fire/`.
+The persistent campaign file defaults to `runtime/world.json` (`-world`). Text packet traces default to `runtime/traces/` (`-trace-dir`); each connection creates a `session-<timestamp>.log` file. The current isolated trial uses `runtime/world-test-15011-city-rosters.json` and `runtime/traces/city-rosters/`.
 
 ## Aries transport
 
@@ -47,7 +47,7 @@ For oversized messages the server emits `SPLIT_BUFFER_PDU` (`0x47`) wrappers con
 2. `CLIENT_ONLINE` (`0x09`) receives the local player record (`0x3C`), profile (`0x3D`), and an unsynchronized static-configuration update (`0x86`). The client’s `STATIC_CONFIG_RESPONSE` (`0xA4`) completes the sync exchange.
 3. Startup settings requests are answered with their default response forms. A `CREATE_CHARACTER` (`0x87`) request creates or loads the local pilot and receives the current zero-result completion form (`0x88`). The authentic success semantics of that response remain unconfirmed.
 4. A `JOIN_PLANET` (`0x91`) request changes the pilot’s planet location. Live connected occupants are announced with `OCCUPANT_UPDATE` (`0x94`) and arrival/departure messages (`0x2B`/`0x2C`). The server answers a rejected join with `JOIN_PLANET_FAILED` (`0x92`).
-5. `LIST_ROOMS` (`0x26`) receives an empty `LIST_ROOMS_RESPONSE` (`0x27`). Solaris staging rooms are maintained from world state and, when enabled, sent as room-list/add/update/remove messages (`0x97`–`0x9A`). A mission join uses `JOIN_ROOM` (`0x23`); leaving can use `EXIT_ROOM` (`0x17`) or the client’s parent-city rejoin path.
+5. `LIST_ROOMS` (`0x26`) receives an empty `LIST_ROOMS_RESPONSE` (`0x27`). Solaris staging rooms are maintained from world state and, when enabled, announced individually with `0x99`, updated with `0x98`, and removed with `0x9A`. Populated `0x97` lists are not used in the tested path. A mission join uses `JOIN_ROOM` (`0x23`); leaving can use `EXIT_ROOM` (`0x17`) or the client’s parent-city rejoin path.
 6. `READY_STATE_CHANGE` (`0x8C`) requests update the selected Mech or readiness state. When the room is ready, the scheduler publishes a countdown and the clients enter combat together.
 7. `COMBAT_DATA` (`0x81`) streams are parsed for supported native position and fire commands. Those commands are relayed to peers in the same active room. This is peer relay; the server does not currently calculate hits, damage, destruction, or match results.
 
@@ -82,6 +82,6 @@ Unknown game PDUs are ignored except for the recognized startup-setting request 
 
 ## Room counts and sides
 
-Live planet occupants are tracked by connected sessions, not by the saved pilot list. Mission occupancy and open seats come from the room’s actual seats, including AI seats. The Solaris room encoder places defender-seat values in the Alpha-facing field and attacker-seat values in the Beta-facing field, based on the current row-renderer observation.
+Live occupants are tracked by connected sessions, not by the saved pilot list. Solaris staging RoomIDs are city-specific: roster snapshots, counts, arrivals, and departures are limited to the same planet and city. Seated pilots remain visible to staging viewers in their own city; mission rosters are limited to their mission. Mission occupancy and open seats come from the room’s actual seats, including AI seats. The Solaris room encoder places defender-seat values in the Alpha-facing field and attacker-seat values in the Beta-facing field, based on the current row-renderer observation.
 
-The user has reported that some room counts, displayed occupants, or team names may still be incorrect. Treat this area as under investigation until join, leave, disconnect, reconnect, and both-side assignment cases have been checked against packet traces and client display. The server-side count alone does not prove that the client renders the right value.
+The October 23 native trial verified Alpha 1/4 and Beta 0/4 for one Alpha pilot, reset to 0/4 after Back, both pilots in the settled staging roster, and both COM-4D seats under the correct mission headings. Ready and cancel changed both visible statuses and the countdown. A separate regression verifies that another city cannot affect the staging roster or count. Native cross-city navigation, reconnect, and same-side assignment remain to be checked; see the [session evidence](research/notes/solaris-session-2026-10-23.md).

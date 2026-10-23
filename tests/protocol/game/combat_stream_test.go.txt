@@ -1,0 +1,213 @@
+package protocol
+
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func readNativeCombatFixture(t *testing.T, kind string) []byte {
+	t.Helper()
+	path := filepath.Join("..", "..", "..", "data", "test-fixtures", "combat-native-"+kind+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// Fixtures execute the original DLL's command writers, framing, checksum and
+// receive preprocessing in an isolated i386 process. Regenerate with
+// scripts/native-combat-fixture.py; they are independent of the Go encoder.
+func TestCombatDataMatchesNativeFixtures(t *testing.T) {
+	for _, kind := range []string{"title", "mech", "ready", "commando", "position", "client-position", "fire", "server-fire"} {
+		t.Run(kind, func(t *testing.T) {
+			data := readNativeCombatFixture(t, kind)
+			var fixture struct {
+				CommandHex          string `json:"command_hex"`
+				FrameHex            string `json:"server_frame_hex"`
+				ClientChecksum      uint32 `json:"client_checksum"`
+				ServerChecksum      uint32 `json:"server_checksum"`
+				NativeDecodeMatches bool   `json:"native_decode_matches"`
+			}
+			if err := json.Unmarshal(data, &fixture); err != nil {
+				t.Fatal(err)
+			}
+			command, err := hex.DecodeString(fixture.CommandHex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			frame, err := hex.DecodeString(fixture.FrameHex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !fixture.NativeDecodeMatches {
+				t.Fatal("fixture did not round-trip through the native preprocessor")
+			}
+			pdu := CombatData(command)
+			want := append(frame, 0)
+			if pdu.ID != CombatDataID || binary.BigEndian.Uint32(pdu.Body) != uint32(len(want)) || !bytes.Equal(pdu.Body[4:], want) {
+				t.Fatalf("native combat frame mismatch: got %x, want counted %x", pdu.Body, want)
+			}
+			if combatChecksum(command, true) != fixture.ServerChecksum || combatChecksum(command, false) != fixture.ClientChecksum {
+				t.Fatal("checksum differs from the native instruction result")
+			}
+			if kind == "ready" && !bytes.Equal(CombatReadyCommand(), command) {
+				t.Fatalf("ready command differs from native writer: %x", command)
+			}
+		})
+	}
+}
+
+func TestNativeClientPositionMapsToNativeServerPosition(t *testing.T) {
+	fixtureCommand := func(kind string) []byte {
+		t.Helper()
+		data := readNativeCombatFixture(t, kind)
+		var fixture struct {
+			CommandHex string `json:"command_hex"`
+		}
+		if err := json.Unmarshal(data, &fixture); err != nil {
+			t.Fatal(err)
+		}
+		command, err := hex.DecodeString(fixture.CommandHex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return command
+	}
+	client := fixtureCommand("client-position")
+	want := fixtureCommand("position")
+	got, err := CombatPeerPosition(1, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("native peer position differs: got %x, want %x", got, want)
+	}
+	client[1] = 0
+	if _, err := CombatPeerPosition(1, client); err == nil {
+		t.Fatal("accepted malformed native position digit")
+	}
+}
+
+func TestNativeClientFireMapsToNativeServerFire(t *testing.T) {
+	fixtureCommand := func(kind string) []byte {
+		t.Helper()
+		data := readNativeCombatFixture(t, kind)
+		var fixture struct {
+			CommandHex string `json:"command_hex"`
+		}
+		if err := json.Unmarshal(data, &fixture); err != nil {
+			t.Fatal(err)
+		}
+		command, err := hex.DecodeString(fixture.CommandHex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return command
+	}
+	client := fixtureCommand("fire")
+	want := fixtureCommand("server-fire")
+	got, err := CombatPeerFire(1, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("native peer fire differs: got %x, want %x", got, want)
+	}
+}
+
+func TestCombatCommandWritersMatchNativeFixtures(t *testing.T) {
+	for _, kind := range []string{"title", "commando"} {
+		t.Run(kind, func(t *testing.T) {
+			data := readNativeCombatFixture(t, kind)
+			var fixture struct {
+				CommandHex string `json:"command_hex"`
+			}
+			if err := json.Unmarshal(data, &fixture); err != nil {
+				t.Fatal(err)
+			}
+			want, err := hex.DecodeString(fixture.CommandHex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writer := combatWriter{}
+			if kind == "title" {
+				writer.title("Fixture", 1, 1, [4]uint32{1729, 11, 22, 33}, 44, [4]byte{2, 3, 4, 55})
+			} else {
+				writer.commando(CombatPilot{ID: 0, Team: 1, CallSign: "FixturePilot", X: 10000, Y: 20000})
+			}
+			if writer.err != nil {
+				t.Fatal(writer.err)
+			}
+			if !bytes.Equal(writer.data, want) {
+				t.Fatalf("command differs from native writer:\ngot  %x\nwant %x", writer.data, want)
+			}
+		})
+	}
+}
+
+func TestCombatBootstrapDeclaresExactMechCountAndDefersReady(t *testing.T) {
+	setup, err := CombatBootstrap(0, []CombatPilot{
+		{ID: 0, Team: 0, CallSign: "Subvoltic", X: 10000, Y: 100000},
+		{ID: 1, Team: 1, CallSign: "BetaPilot", X: 12000, Y: 100000},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// After u32 length, ESC and prefix, Title serializes name, local ID,
+	// climate, four three-digit values, then two-digit heat. Its next byte
+	// is the exact Mech count checked at native AddNewMech:0x690576d7.
+	command := setup.Body[6 : len(setup.Body)-5]
+	countOffset := 1 + 1 + len("Solaris") + 2 + 4*3 + 2
+	if command[countOffset] != 2+'!' {
+		t.Fatalf("declared native Mech count %d, want 2", command[countOffset]-'!')
+	}
+	if command[len(command)-1] == '_' {
+		t.Fatal("Ready was sent before native PreCombatInit can initialize HUD nodes")
+	}
+}
+
+func TestParseNativeClientPositionFrame(t *testing.T) {
+	// First real position packet after the two-Mech setup, captured from
+	// native-bootstrap-stage3 at 13:47:33. No terminal NUL is counted.
+	body, err := hex.DecodeString("0000002b1b21274b4d2e5a4b593d7322302b4b4b4b4b4b4b4b4d4e4b4b4b4b4b4b4b4b4b4b4b4b2139574b3859341b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, err := ParseClientCombatData(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(command) != 37 || command[0] != 0x27 {
+		t.Fatalf("unexpected native position command: %x", command)
+	}
+	body[10] ^= 1
+	if _, err := ParseClientCombatData(body); err == nil {
+		t.Fatal("accepted corrupted native combat data")
+	}
+}
+
+func TestNativeShotFrameRetainsPositionCommand(t *testing.T) {
+	// One live shot from Subvoltic: the DLL batched position and weapon fire
+	// commands under a single checksum and COMBAT_DATA PDU.
+	body, err := hex.DecodeString("0000004f1b21274b4c62634b5835422234234b4b4b4b4b4b4b4d4f4b4b4b4b4a734b4b4b4b4b4b212124462b21212121224b4b4b4b4b4b4b4c62634b5835422234234b582d554b4c606c4b4c61752224714c1b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands, err := ParseClientCombatData(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	position, ok := ClientCombatPosition(commands)
+	if !ok || len(position) != 37 || commands[37] != '+' {
+		t.Fatalf("did not recover position plus native fire command: %x", commands)
+	}
+	if _, err := CombatPeerPosition(0, position); err != nil {
+		t.Fatal(err)
+	}
+}

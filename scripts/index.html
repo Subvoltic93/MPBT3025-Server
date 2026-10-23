@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scripts — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>Scripts</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="../index.html">Status</a>
+<a href="../readme.html">README</a>
+<a href="../protocol.html">Protocol</a>
+<a href="../research.html">Research</a>
+<a href="../roadmap.html">Roadmap</a>
+<a href="../project-files.html" class="current" aria-current="page">Project files</a></nav>
+  <main><article class="document"><h1>Scripts</h1>
+<ul>
+<li><code>test.sh</code> runs the Go test suite by mapping test sources from <code>tests/</code> into their matching packages under <code>src/</code>.</li>
+<li><code>native-combat-fixture.py</code> executes the supplied native module in an isolated i386 fixture process and prints JSON evidence to standard output. Save reviewed output under <code>data/test-fixtures/</code> when updating a fixture.</li>
+<li><code>extract-vcr-planet-owners.py</code> checks the operator's local VCR and seed data.</li>
+<li><code>summarize-trace.py</code> summarizes packet trace logs.</li>
+</ul>
+<p>Client-dependent utilities read from the separate client directory and do not copy client assets into this project.</p>
+</article></main>
+  <footer class="site-footer">
+    <p><a href="../project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

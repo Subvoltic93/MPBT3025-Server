@@ -1,0 +1,48 @@
+package aries
+
+import (
+	"bytes"
+	"encoding/hex"
+	"io"
+	"testing"
+)
+
+// A reader that splits every network read exercises TCP segmentation.
+type byteReader struct{ io.Reader }
+
+func (r byteReader) Read(p []byte) (int, error) { return r.Reader.Read(p[:1]) }
+
+func TestReadFragmentedAndCoalescedFrames(t *testing.T) {
+	// Login request sent to the real client, followed by a transport data frame.
+	wire, _ := hex.DecodeString("160000000000000000000000000000000700000003000000010203")
+	r := byteReader{bytes.NewReader(wire)}
+	first, err := Read(r)
+	if err != nil || first.Type != LoginRequest || len(first.Payload) != 0 {
+		t.Fatalf("first frame: %+v, %v", first, err)
+	}
+	second, err := Read(r)
+	if err != nil || second.Type != Data || second.Tag != 7 || !bytes.Equal(second.Payload, []byte{1, 2, 3}) {
+		t.Fatalf("second frame: %+v, %v", second, err)
+	}
+}
+
+func TestRejectInvalidFrames(t *testing.T) {
+	for _, wire := range [][]byte{{0}, make([]byte, 13), {0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0xff, 0x7f}} {
+		if len(wire) == 13 {
+			wire[8] = 2
+		}
+		if _, err := Read(bytes.NewReader(wire)); err == nil {
+			t.Fatalf("accepted invalid frame %x", wire)
+		}
+	}
+}
+
+func TestWriteLoginRequest(t *testing.T) {
+	var buf bytes.Buffer
+	if err := Write(&buf, Frame{Type: LoginRequest}); err != nil {
+		t.Fatal(err)
+	}
+	if got := hex.EncodeToString(buf.Bytes()); got != "160000000000000000000000" {
+		t.Fatal(got)
+	}
+}

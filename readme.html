@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MPBT3025 Server Emulator — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>MPBT3025 Server Emulator</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="index.html">Status</a>
+<a href="readme.html" class="current" aria-current="page">README</a>
+<a href="protocol.html">Protocol</a>
+<a href="research.html">Research</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="project-files.html">Project files</a></nav>
+  <main><article class="document"><h1>MPBT3025 Server Emulator</h1>
+<p>A Go implementation of the local server side of the MPBT 3025 protocol. The project focuses on connection bootstrap, pilot and campaign state, Solaris rooms, and the current multiplayer combat path. It does not contain the original client, client binaries, art, maps, or the reference project's source.</p>
+<p>The organization takes inspiration from the separation of source, research, and utilities in <a href="https://github.com/kenhuman/mpbt-server">KenzHuman's <code>mpbt-server</code></a>. This implementation remains Go and keeps its protocol and state packages small and explicit.</p>
+<h2>Current state</h2>
+<p>The server can bootstrap the client, persist local pilot/world state as JSON, publish planet and Solaris room state, route live occupants and chat, coordinate mission seats and countdown, and relay observed combat position/fire commands. Authoritative damage, match completion, and results are still unfinished. The Solaris room count and Alpha/Beta display mapping have a reported regression and remain under verification.</p>
+<p>See <a href="research.html">Research.md</a> for evidence and open questions, <a href="roadmap.html">Roadmap.md</a> for planned work, and <a href="protocol.html">Protocol.md</a> for listener addresses, framing, handled messages, and the current connection flow. The <a href="research/notes/bootstrap-handoff.html">implementation handoff notes</a> record detailed development history. The game manual and SDS are indexed in <a href="reference/index.html"><code>reference/README.md</code></a>.</p>
+<h2>Run</h2>
+<p>Requires Go 1.24 or newer. From this directory:</p>
+<pre><code class="language-sh">go run ./src/cmd/server
+</code></pre>
+<p>The default listener is <code>127.0.0.1:15000</code>. The server writes campaign state to <code>runtime/world.json</code> and packet traces to <code>runtime/traces/</code>. Both paths can be changed with <code>-world</code> and <code>-trace-dir</code>.</p>
+<p>For example, an isolated local trial can use:</p>
+<pre><code class="language-sh">go run ./src/cmd/server \
+  -listen 127.0.0.1:15011 \
+  -world runtime/world-test.json \
+  -trace-dir runtime/traces/test
+</code></pre>
+<p>Run <code>go run ./src/cmd/server -h</code> for the available flags. Planet-state probes, room-type trials, combat initialization, and the second listener are experimental; use them only with an isolated local client.</p>
+<h2>Layout</h2>
+<pre><code class="language-text">.
+├── data/                 Go seed loader and generated protocol fixtures
+│   └── test-fixtures/    native combat command JSON fixtures
+├── reference/            manual and SDS reference copies and index
+├── research/notes/       dated implementation and investigation notes
+├── scripts/              trace, fixture, test, and site utilities
+├── src/
+│   ├── cmd/server/        executable entry point
+│   ├── config/            command-line configuration and validation
+│   ├── db/                reserved database adapter and schema placeholders
+│   ├── protocol/
+│   │   ├── aries/         outer TCP framing and redirect messages
+│   │   └── game/          inner game PDU and combat codecs
+│   ├── server/            listener, connection flow, sessions and room fanout
+│   └── state/             campaign rules and JSON persistence
+├── tests/                 tests grouped by source package; files use .go.txt
+├── README.md, Protocol.md, Research.md, Roadmap.md
+├── index.html             GitHub Pages status homepage
+├── project-files.html     links to documentation, research and downloads
+├── assets/site.css        shared retro layout and responsive styles
+└── runtime/               ignored local state, traces, logs and binaries
+</code></pre>
+<p>All test sources live under <code>tests/</code>. The files use a <code>.go.txt</code> suffix so Go does not treat the test directory as a second copy of each package. <code>scripts/test.sh</code> maps them into their matching source packages with a Go overlay, preserving tests of package-private behavior.</p>
+<p>The campaign store is currently JSON-backed. <code>src/db/</code> is a documented placeholder for a future persistence adapter; it has no database driver, actual SQL tables, or runtime role yet. <code>state</code> owns current persistence and game rules; <code>protocol</code> owns wire encoding; <code>server</code> coordinates sessions and request flow.</p>
+<p>The default seed uses generic planet labels and a synthetic ownership map. To use operator-supplied seed tables, place <code>planet_names.json</code> and optionally <code>planet_sds_owners_v1.json</code> in an external directory and set <code>MPBT3025_SEED_DIR</code>. Scripts that inspect a supplied client cache or native module look outside this project; set <code>MPBT3025_CLIENT_ROOT</code> to that separate client directory. Native protocol fixtures under <code>data/test-fixtures/</code> are generated test artifacts, not extracted campaign seed tables.</p>
+<h2>Build and checks</h2>
+<pre><code class="language-sh">go build ./...
+./scripts/test.sh
+</code></pre>
+<p>The status page is the GitHub Pages homepage at <a href="index.html"><code>index.html</code></a>. The former <a href="project-status.html"><code>project-status.html</code></a> path forwards to it. Site documents are built from the Markdown sources with:</p>
+<pre><code class="language-sh">python3 -m pip install -r requirements-site.txt
+python3 scripts/build_site.py
+</code></pre>
+<p>The generator writes static HTML next to the source tree; GitHub Pages serves the committed files directly from the repository root. See <a href="project-files.html"><code>project-files.html</code></a> for the site index and downloads.</p>
+</article></main>
+  <footer class="site-footer">
+    <p><a href="project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

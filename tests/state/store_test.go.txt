@@ -1,0 +1,857 @@
+package state
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestSolarisCityCapacityReadsLegacyPilotField(t *testing.T) {
+	var city CityLobby
+	if err := json.Unmarshal([]byte(`{"id":1,"name":"Legacy City","max_pilots":7}`), &city); err != nil {
+		t.Fatal(err)
+	}
+	if city.MaxMechs != 7 || cityMechCapacity(city) != 7 {
+		t.Fatalf("legacy city capacity decoded as %+v", city)
+	}
+	data, err := json.Marshal(city)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	if err := json.Unmarshal(data, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored["max_mechs"] != float64(7) {
+		t.Fatalf("city capacity was not written as max_mechs: %s", data)
+	}
+	if _, ok := stored["max_pilots"]; ok {
+		t.Fatalf("legacy max_pilots key was written again: %s", data)
+	}
+}
+
+func openTestStore(t *testing.T) *Store {
+	t.Helper()
+	store, err := Open(filepath.Join(t.TempDir(), "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func TestPilotIDsAreUniqueAndPersisted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "world.json")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha, err := store.CreatePilot("AlphaPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := store.CreatePilot("BetaPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alpha.PlayerID == 0 || beta.PlayerID == 0 || alpha.PlayerID == beta.PlayerID {
+		t.Fatalf("pilot IDs = %d and %d, want distinct nonzero IDs", alpha.PlayerID, beta.PlayerID)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alphaAgain, _ := reopened.Pilot("AlphaPilot")
+	betaAgain, _ := reopened.Pilot("BetaPilot")
+	if alphaAgain.PlayerID != alpha.PlayerID || betaAgain.PlayerID != beta.PlayerID {
+		t.Fatalf("persisted pilot IDs changed: AlphaPilot %d->%d, BetaPilot %d->%d", alpha.PlayerID, alphaAgain.PlayerID, beta.PlayerID, betaAgain.PlayerID)
+	}
+	gamma, err := reopened.CreatePilot("GammaPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gamma.PlayerID <= beta.PlayerID || gamma.PlayerID <= alpha.PlayerID {
+		t.Fatalf("new pilot ID %d does not follow existing IDs %d and %d", gamma.PlayerID, alpha.PlayerID, beta.PlayerID)
+	}
+}
+
+func TestOpenMigratesLegacyPilotIDsDeterministically(t *testing.T) {
+	world, err := DefaultWorld()
+	if err != nil {
+		t.Fatal(err)
+	}
+	world.Pilots["betapilot"] = Pilot{CallSign: "BetaPilot"}
+	world.Pilots["alphapilot"] = Pilot{CallSign: "AlphaPilot"}
+	world.NextPlayerID = 0
+	data, err := json.Marshal(world)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "legacy-world.json")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alpha, _ := store.Pilot("AlphaPilot")
+	beta, _ := store.Pilot("BetaPilot")
+	if alpha.PlayerID != 1 || beta.PlayerID != 2 || store.Snapshot().NextPlayerID != 3 {
+		t.Fatalf("migrated player IDs: alpha=%d beta=%d next=%d; want 1, 2, 3", alpha.PlayerID, beta.PlayerID, store.Snapshot().NextPlayerID)
+	}
+}
+
+func graduateTestPilot(t *testing.T, store *Store, callSign string) {
+	t.Helper()
+	if err := store.update(func(world *World) error {
+		pilot := world.Pilots[pilotKey(callSign)]
+		pilot.RankPoints = GraduationRankPoints
+		pilot.Graduated = true
+		pilot.SolarisGraduationMedal = true
+		world.Pilots[pilotKey(callSign)] = pilot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSolarisCityAssignmentAndGraduatedReturnCapacity(t *testing.T) {
+	store := openTestStore(t)
+	first, err := store.CreatePilot("FirstCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Location != (Location{}) {
+		t.Fatalf("new pilot location = %+v, want no city reservation before JOIN_PLANET", first.Location)
+	}
+	if err := store.JoinPlanet(first.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.CreatePilot("SecondCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(second.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	first, _ = store.Pilot(first.CallSign)
+	second, _ = store.Pilot(second.CallSign)
+	if first.Location.CityID != 1 || second.Location.CityID != 1 {
+		t.Fatalf("cadet city assignment = %d, %d; want both pilots in the first available city", first.Location.CityID, second.Location.CityID)
+	}
+	directory := store.SolarisCityDirectory()
+	if len(directory) != SolarisCityCount || directory[0].OccupiedMechs != 2 {
+		t.Fatalf("Solaris city directory has %d cities; first city occupancy = %+v", len(directory), directory[0])
+	}
+
+	graduateTestPilot(t, store, second.CallSign)
+	if err := store.ChooseHouse(second.CallSign, HouseDavion); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(second.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.update(func(world *World) error {
+		planet := world.Planets[SolarisPlanetID]
+		planet.Cities[2].MaxMechs = 1
+		world.Planets[SolarisPlanetID] = planet
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinSolarisCity(second.CallSign, 3); err != nil {
+		t.Fatalf("returning graduate should be able to choose a free city: %v", err)
+	}
+	third, err := store.CreatePilot("ThirdGrad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graduateTestPilot(t, store, third.CallSign)
+	if err := store.JoinPlanet(third.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinSolarisCity(third.CallSign, 3); err == nil {
+		t.Fatal("joining a full Solaris city succeeded")
+	}
+	if err := store.JoinSolarisCity(third.CallSign, 4); err != nil {
+		t.Fatalf("joining another available Solaris city failed: %v", err)
+	}
+	directory = store.SolarisCityDirectory()
+	if !directory[2].Full || directory[2].OccupiedMechs != 1 {
+		t.Fatalf("city 3 status = %+v, want one occupied mech and FULL", directory[2])
+	}
+}
+
+func TestGraduatedSolarisCityPickerCanCancelOrChoose(t *testing.T) {
+	store := openTestStore(t)
+	graduate, err := store.CreatePilot("ReturnGrad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graduateTestPilot(t, store, graduate.CallSign)
+	origin := Location{PlanetID: 1, SectorID: 2}
+	if err := store.update(func(world *World) error {
+		pilot := world.Pilots[pilotKey(graduate.CallSign)]
+		pilot.Location = origin
+		world.Pilots[pilotKey(graduate.CallSign)] = pilot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(graduate.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	graduate, _ = store.Pilot(graduate.CallSign)
+	if graduate.Location != (Location{PlanetID: SolarisPlanetID}) || graduate.SolarisCityPickerOrigin == nil {
+		t.Fatalf("returning graduate city-picker state = %+v, origin %+v", graduate.Location, graduate.SolarisCityPickerOrigin)
+	}
+	if err := store.CancelSolarisCityPicker(graduate.CallSign); err != nil {
+		t.Fatal(err)
+	}
+	graduate, _ = store.Pilot(graduate.CallSign)
+	if graduate.Location != origin || graduate.SolarisCityPickerOrigin != nil {
+		t.Fatalf("cancel did not restore prior location: %+v, origin %+v", graduate.Location, graduate.SolarisCityPickerOrigin)
+	}
+	if err := store.JoinPlanet(graduate.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinSolarisCity(graduate.CallSign, 3); err != nil {
+		t.Fatal(err)
+	}
+	graduate, _ = store.Pilot(graduate.CallSign)
+	if graduate.Location != (Location{PlanetID: SolarisPlanetID, CityID: 3}) || graduate.SolarisCityPickerOrigin != nil {
+		t.Fatalf("selected city was not saved: %+v, origin %+v", graduate.Location, graduate.SolarisCityPickerOrigin)
+	}
+}
+
+func TestSolarisCityPickerRejectsCadetsAndUnrequestedGraduateMoves(t *testing.T) {
+	store := openTestStore(t)
+	cadet, err := store.CreatePilot("PickerCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(cadet.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	cadetBefore, _ := store.Pilot(cadet.CallSign)
+	if err := store.JoinSolarisCity(cadet.CallSign, 2); err == nil {
+		t.Fatal("cadet was allowed to choose a Solaris city")
+	}
+	cadetAfter, _ := store.Pilot(cadet.CallSign)
+	if cadetAfter.Location != cadetBefore.Location {
+		t.Fatalf("rejected cadet city change mutated location: before=%+v after=%+v", cadetBefore.Location, cadetAfter.Location)
+	}
+
+	graduate, err := store.CreatePilot("PickerGrad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graduateTestPilot(t, store, graduate.CallSign)
+	if err := store.update(func(world *World) error {
+		pilot := world.Pilots[pilotKey(graduate.CallSign)]
+		pilot.Location = Location{PlanetID: SolarisPlanetID, CityID: 1}
+		world.Pilots[pilotKey(graduate.CallSign)] = pilot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinSolarisCity(graduate.CallSign, 2); err == nil {
+		t.Fatal("graduate was allowed to change cities without opening the returning-pilot picker")
+	}
+	graduateAfter, _ := store.Pilot(graduate.CallSign)
+	if graduateAfter.Location != (Location{PlanetID: SolarisPlanetID, CityID: 1}) {
+		t.Fatalf("rejected graduate city change mutated location: %+v", graduateAfter.Location)
+	}
+}
+
+func TestSolarisMissionListsSeparateCadetsAndGraduates(t *testing.T) {
+	store := openTestStore(t)
+	cadet, err := store.CreatePilot("CadetFour")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(cadet.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	cadet, _ = store.Pilot(cadet.CallSign)
+	cadetRooms, err := store.RoomsForSolarisCity(cadet.CallSign)
+	if err != nil || len(cadetRooms) != SolarisRoomPerCity {
+		t.Fatalf("cadet room list = %d rooms, err %v; want %d seeded practice rooms", len(cadetRooms), err, SolarisRoomPerCity)
+	}
+	if !cadetRooms[0].CadetOnly {
+		t.Fatal("seeded Solaris mission is not marked cadet-only")
+	}
+	if err := store.JoinRoom(cadet.CallSign, cadetRooms[0].ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	graduate, err := store.CreatePilot("GradFour")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graduateTestPilot(t, store, graduate.CallSign)
+	if err := store.JoinPlanet(graduate.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	graduate, _ = store.Pilot(graduate.CallSign)
+	if graduate.Location.CityID != 0 {
+		t.Fatalf("returning graduate was assigned to city %d before choosing from the city picker", graduate.Location.CityID)
+	}
+	if err := store.JoinSolarisCity(graduate.CallSign, cadet.Location.CityID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(graduate.CallSign, cadetRooms[0].ID, 1, 0); err == nil {
+		t.Fatal("graduate joined a cadet mission")
+	}
+	practice, err := store.CreateRoom(graduate.CallSign, "Practice with friends", "Solaris Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if practice.CadetOnly {
+		t.Fatal("graduate practice room is marked cadet-only")
+	}
+	if err := store.JoinRoom(cadet.CallSign, practice.ID, 1, 0); err == nil {
+		t.Fatal("cadet joined an experienced-pilot practice room")
+	}
+	graduateRooms, err := store.RoomsForSolarisCity(graduate.CallSign)
+	if err != nil || len(graduateRooms) != SolarisRoomPerCity+1 {
+		t.Fatalf("graduate room list = %+v, err %v; want seeded practice slots and the created room", graduateRooms, err)
+	}
+	foundCreated := false
+	for _, room := range graduateRooms {
+		if room.CadetOnly {
+			t.Fatalf("graduate saw cadet mission %+v", room)
+		}
+		if room.ID == practice.ID {
+			foundCreated = true
+		}
+	}
+	if !foundCreated {
+		t.Fatalf("graduate room list omitted created room %d", practice.ID)
+	}
+}
+
+func TestSolarisKeepsEmptyPracticeSlotsAsRoomsFillAndFinish(t *testing.T) {
+	store := openTestStore(t)
+	graduate, err := store.CreatePilot("PracticeGrad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graduateTestPilot(t, store, graduate.CallSign)
+	if err := store.JoinPlanet(graduate.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinSolarisCity(graduate.CallSign, 1); err != nil {
+		t.Fatal(err)
+	}
+	rooms, err := store.RoomsForSolarisCity(graduate.CallSign)
+	if err != nil || len(rooms) != SolarisRoomPerCity {
+		t.Fatalf("initial graduate room list = %d rooms, err %v; want %d", len(rooms), err, SolarisRoomPerCity)
+	}
+	room := rooms[0]
+	if err := store.JoinRoom(graduate.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	rooms, err = store.RoomsForSolarisCity(graduate.CallSign)
+	if err != nil || len(rooms) != SolarisRoomPerCity+1 {
+		t.Fatalf("room list after taking a seat = %d rooms, err %v; want occupied room plus %d empty choices", len(rooms), err, SolarisRoomPerCity)
+	}
+	if err := store.SetReady(graduate.CallSign, true, time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	started, err := store.StartExpiredBattles(time.Unix(160, 0))
+	if err != nil || len(started) != 1 || started[0].ID != room.ID {
+		t.Fatalf("start room = %+v, err %v; want room %d", started, err, room.ID)
+	}
+	rooms, err = store.RoomsForSolarisCity(graduate.CallSign)
+	if err != nil || len(rooms) != SolarisRoomPerCity {
+		t.Fatalf("room list during battle = %d rooms, err %v; want %d fresh choices", len(rooms), err, SolarisRoomPerCity)
+	}
+	if err := store.ApplyBattleResult(MatchResult{MatchID: "graduate-solaris-match", RoomID: room.ID, WinningSide: 0, AttackingSide: 0}); err != nil {
+		t.Fatal(err)
+	}
+	rooms, err = store.RoomsForSolarisCity(graduate.CallSign)
+	if err != nil || len(rooms) != SolarisRoomPerCity {
+		t.Fatalf("room list after results = %d rooms, err %v; want %d reusable practice choices", len(rooms), err, SolarisRoomPerCity)
+	}
+}
+
+func TestSolarisReadyCountdownAIRebalanceAndGraduation(t *testing.T) {
+	store := openTestStore(t)
+	cadet, err := store.CreatePilot("BattleCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(cadet.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	for battle := 0; battle < 13; battle++ {
+		room, err := store.CreateRoom(cadet.CallSign, fmt.Sprintf("Cadet battle %d", battle), "Cadet Practice")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.JoinRoom(cadet.CallSign, room.ID, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SetReady(cadet.CallSign, true, now); err != nil {
+			t.Fatal(err)
+		}
+		started, err := store.StartExpiredBattles(now.Add(59 * time.Second))
+		if err != nil || len(started) != 0 {
+			t.Fatalf("battle started before the 60-second timer: started=%d err=%v", len(started), err)
+		}
+		started, err = store.StartExpiredBattles(now.Add(60 * time.Second))
+		if err != nil || len(started) != 1 || started[0].Status != RoomInCombat {
+			t.Fatalf("expired battle = %+v, err %v", started, err)
+		}
+		room = started[0]
+		if room.Seats[0][0].CallSign != cadet.CallSign || room.Seats[1][0].CallSign != "AI Opponent" || !room.Seats[1][0].AI {
+			t.Fatalf("solo practice seats = %+v, %+v; want player vs AI", room.Seats[0][0], room.Seats[1][0])
+		}
+		winningSide := 1
+		if battle > 0 {
+			winningSide = 0
+		}
+		if err := store.ApplyBattleResult(MatchResult{MatchID: fmt.Sprintf("match-%d", battle), RoomID: room.ID, WinningSide: winningSide, AttackingSide: 0}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.ApplyBattleResult(MatchResult{MatchID: fmt.Sprintf("match-%d", battle), RoomID: room.ID, WinningSide: winningSide, AttackingSide: 0}); err != nil {
+			t.Fatalf("reapplying match result was not idempotent: %v", err)
+		}
+		now = now.Add(time.Minute)
+	}
+	graduate, _ := store.Pilot(cadet.CallSign)
+	if graduate.RankPoints != GraduationRankPoints || !graduate.Graduated || !graduate.SolarisGraduationMedal || graduate.Battles != 13 || graduate.Wins != 12 {
+		t.Fatalf("after 13 Solaris battles, pilot = %+v; want capped rank, medal, and 12 wins", graduate)
+	}
+	if err := store.ChooseHouse(cadet.CallSign, HouseDavion); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ChooseHouse(cadet.CallSign, HouseKurita); err == nil {
+		t.Fatal("pilot changed Houses after graduation")
+	}
+	if err := store.JoinPlanet(cadet.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinSolarisCity(cadet.CallSign, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.update(func(world *World) error {
+		pilot := world.Pilots[pilotKey(cadet.CallSign)]
+		pilot.Credits = 10_000_000
+		world.Pilots[pilotKey(cadet.CallSign)] = pilot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BuyMech(cadet.CallSign, "Atlas AS7-D"); err != nil {
+		t.Fatalf("Solaris should allow any weight class: %v", err)
+	}
+	graduate, _ = store.Pilot(cadet.CallSign)
+	startingRank, startingCredits := graduate.RankPoints, graduate.Credits
+	practice, err := store.CreateRoom(cadet.CallSign, "Graduate practice", "Solaris Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(cadet.CallSign, practice.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetReady(cadet.CallSign, true, now); err != nil {
+		t.Fatal(err)
+	}
+	started, err := store.StartExpiredBattles(now.Add(time.Minute))
+	if err != nil || len(started) != 1 {
+		t.Fatalf("graduate practice battle start = %+v, err %v", started, err)
+	}
+	if err := store.ApplyBattleResult(MatchResult{MatchID: "graduate-practice", RoomID: practice.ID, WinningSide: 0, AttackingSide: 0}); err != nil {
+		t.Fatal(err)
+	}
+	graduate, _ = store.Pilot(cadet.CallSign)
+	if graduate.RankPoints != startingRank || graduate.Credits != startingCredits {
+		t.Fatalf("graduated Solaris return battle changed campaign rewards: rank %d->%d credits %d->%d", startingRank, graduate.RankPoints, startingCredits, graduate.Credits)
+	}
+}
+
+func TestReadyRoomRebalancesSameSideAndMovesPilotBetweenSeats(t *testing.T) {
+	store := openTestStore(t)
+	alpha, err := store.CreatePilot("AlphaCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := store.CreatePilot("BetaCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pilot := range []Pilot{alpha, beta} {
+		if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	room, err := store.CreateRoom(alpha.CallSign, "Team practice", "Cadet Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(alpha.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(alpha.CallSign, room.ID, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	room = store.Snapshot().Rooms[room.ID]
+	if room.Seats[0][0].CallSign != "" || room.Seats[0][1].CallSign != alpha.CallSign {
+		t.Fatalf("moving seats duplicated pilot: seats=%+v", room.Seats[0])
+	}
+	if err := store.JoinRoom(beta.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := store.SetReady(alpha.CallSign, true, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetReady(beta.CallSign, true, now.Add(20*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	current := store.Snapshot().Rooms[room.ID]
+	if !current.CountdownEnds.Equal(now.Add(60 * time.Second)) {
+		t.Fatalf("second ready changed the countdown deadline: %s", current.CountdownEnds)
+	}
+	started, err := store.StartExpiredBattles(now.Add(60 * time.Second))
+	if err != nil || len(started) != 1 {
+		t.Fatalf("expired battle = %+v, err %v", started, err)
+	}
+	current = started[0]
+	var playerCount [2]int
+	for side := range current.Seats {
+		for _, seat := range current.Seats[side] {
+			if seat.CallSign != "" && !seat.AI {
+				playerCount[side]++
+			}
+		}
+	}
+	if playerCount != [2]int{1, 1} || current.Seats[0][0].AI || current.Seats[1][0].AI {
+		t.Fatalf("same-side ready roster was not rebalanced: counts=%v seats=%+v", playerCount, current.Seats)
+	}
+	alpha, _ = store.Pilot(alpha.CallSign)
+	beta, _ = store.Pilot(beta.CallSign)
+	if alpha.Location.Side == beta.Location.Side {
+		t.Fatalf("persisted player teams were not updated after rebalance: alpha=%+v beta=%+v", alpha.Location, beta.Location)
+	}
+}
+
+func TestCountdownWithOneReadyPlayerReleasesUnreadySeat(t *testing.T) {
+	store := openTestStore(t)
+	ready, err := store.CreatePilot("ReadyPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unready, err := store.CreatePilot("UnreadyPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pilot := range []Pilot{ready, unready} {
+		if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	room, err := store.CreateRoom(ready.CallSign, "Ready room", "Cadet Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(ready.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(unready.CallSign, room.ID, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := store.SetReady(ready.CallSign, true, now); err != nil {
+		t.Fatal(err)
+	}
+	started, err := store.StartExpiredBattles(now.Add(time.Minute))
+	if err != nil || len(started) != 1 {
+		t.Fatalf("expired countdown = %+v, err %v", started, err)
+	}
+	unready, _ = store.Pilot(unready.CallSign)
+	if unready.Location.RoomID != 0 || unready.Location.CityID == 0 {
+		t.Fatalf("unready pilot was left in the launched match: location=%+v", unready.Location)
+	}
+	if started[0].Seats[0][0].CallSign != ready.CallSign || started[0].Seats[1][0].CallSign != "AI Opponent" {
+		t.Fatalf("one ready player did not launch against AI: %+v", started[0].Seats)
+	}
+}
+
+func TestSolarisCountdownSurvivesAnotherPlayerUnreadying(t *testing.T) {
+	store := openTestStore(t)
+	alpha, err := store.CreatePilot("AlphaReady")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := store.CreatePilot("BetaReady")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pilot := range []Pilot{alpha, beta} {
+		if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	room, err := store.CreateRoom(alpha.CallSign, "Readiness practice", "Cadet Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(alpha.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(beta.CallSign, room.ID, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Unix(300, 0)
+	if err := store.SetReady(alpha.CallSign, true, start); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetReady(beta.CallSign, true, start.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := store.Snapshot().Rooms[room.ID].CountdownEnds
+	if err := store.SetReady(beta.CallSign, false, start.Add(20*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	room = store.Snapshot().Rooms[room.ID]
+	if room.Status != RoomCountdown || !room.CountdownEnds.Equal(deadline) {
+		t.Fatalf("one pilot unreadying interrupted the other pilot's countdown: %+v", room)
+	}
+	if err := store.SetReady(alpha.CallSign, false, start.Add(21*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	room = store.Snapshot().Rooms[room.ID]
+	if room.Status != RoomOpen || !room.CountdownEnds.IsZero() {
+		t.Fatalf("countdown remained active with no ready pilots: %+v", room)
+	}
+}
+
+func TestSolarisCountdownSurvivesReadyPilotLeavingWhenAnotherPilotIsReady(t *testing.T) {
+	store := openTestStore(t)
+	alpha, err := store.CreatePilot("AlphaLeaving")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beta, err := store.CreatePilot("BetaStaying")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pilot := range []Pilot{alpha, beta} {
+		if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	room, err := store.CreateRoom(alpha.CallSign, "Leaving pilot practice", "Cadet Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(alpha.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom(beta.CallSign, room.ID, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Unix(500, 0)
+	if err := store.SetReady(alpha.CallSign, true, start); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetReady(beta.CallSign, true, start.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := store.Snapshot().Rooms[room.ID].CountdownEnds
+	if err := store.LeaveRoom(alpha.CallSign); err != nil {
+		t.Fatal(err)
+	}
+	current := store.Snapshot().Rooms[room.ID]
+	if current.Status != RoomCountdown || !current.CountdownEnds.Equal(deadline) || current.Seats[0][0].CallSign != "" || current.Seats[0][1].CallSign != beta.CallSign {
+		t.Fatalf("leaving ready pilot interrupted the remaining countdown: %+v", current)
+	}
+}
+
+func TestFailedSolarisRejoinRollsBackMissionSeatRemoval(t *testing.T) {
+	store := openTestStore(t)
+	pilot, err := store.CreatePilot("CapacityCadet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	rooms, err := store.RoomsForSolarisCity(pilot.CallSign)
+	if err != nil || len(rooms) == 0 {
+		t.Fatalf("initial Solaris room list = %d rooms, err %v", len(rooms), err)
+	}
+	room := rooms[0]
+	if err := store.JoinRoom(pilot.CallSign, room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.update(func(world *World) error {
+		planet := world.Planets[SolarisPlanetID]
+		for index := range planet.Cities {
+			planet.Cities[index].MaxMechs = 1
+		}
+		world.Planets[SolarisPlanetID] = planet
+		pilot := world.Pilots[pilotKey(pilot.CallSign)]
+		pilot.OwnedMechs = []string{"Commando-4D", "Jenner JR7-D"}
+		world.Pilots[pilotKey(pilot.CallSign)] = pilot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err == nil {
+		t.Fatal("rejoining Solaris with more 'Mechs than any city can hold succeeded")
+	}
+	state := store.Snapshot()
+	currentPilot := state.Pilots[pilotKey(pilot.CallSign)]
+	currentRoom := state.Rooms[room.ID]
+	if currentPilot.Location.RoomID != room.ID || currentRoom.Seats[0][0].CallSign != pilot.CallSign {
+		t.Fatalf("failed city rejoin left partial state: pilot=%+v room=%+v", currentPilot.Location, currentRoom)
+	}
+}
+
+func TestSetReadyRejectsInvalidOrMismatchedMissionSeats(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*Pilot)
+	}{
+		{name: "out-of-range side", mutate: func(pilot *Pilot) { pilot.Location.Side = 2 }},
+		{name: "unoccupied seat", mutate: func(pilot *Pilot) { pilot.Location.Seat = 1 }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := openTestStore(t)
+			pilot, err := store.CreatePilot("GuardedCadet")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.JoinPlanet(pilot.CallSign, SolarisPlanetID); err != nil {
+				t.Fatal(err)
+			}
+			room, err := store.CreateRoom(pilot.CallSign, "Seat validation", "Cadet Practice")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.JoinRoom(pilot.CallSign, room.ID, 0, 0); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.update(func(world *World) error {
+				stored := world.Pilots[pilotKey(pilot.CallSign)]
+				test.mutate(&stored)
+				world.Pilots[pilotKey(pilot.CallSign)] = stored
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SetReady(pilot.CallSign, true, time.Unix(600, 0)); err == nil {
+				t.Fatal("ready accepted an invalid seat reference")
+			}
+			current := store.Snapshot().Rooms[room.ID]
+			if current.Status != RoomOpen || !current.CountdownEnds.IsZero() || current.Seats[0][0].Ready {
+				t.Fatalf("invalid seat reference changed room state: %+v", current)
+			}
+		})
+	}
+}
+
+func TestMissionMechSelectionPersistsOnlyForTheOccupiedSeat(t *testing.T) {
+	store := openTestStore(t)
+	for _, name := range []string{"AlphaPilot", "BetaPilot"} {
+		if _, err := store.CreatePilot(name); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.JoinPlanet(name, SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	room, err := store.CreateRoom("AlphaPilot", "Mech selection", "Cadet Practice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SelectMissionMech("AlphaPilot", 8); err == nil {
+		t.Fatal("accepted selection before mission join")
+	}
+	if err := store.JoinRoom("AlphaPilot", room.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinRoom("BetaPilot", room.ID, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SelectMissionMech("AlphaPilot", 8); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetReady("AlphaPilot", true, time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := reopened.Snapshot().Rooms[room.ID]
+	if got.Seats[0][0].MechID != 8 || !got.Seats[0][0].Ready || got.Seats[1][0].MechID != 0 {
+		t.Fatalf("persisted selection/readiness = %+v", got.Seats)
+	}
+	if err := store.update(func(w *World) error {
+		pilot := w.Pilots[pilotKey("AlphaPilot")]
+		pilot.Location.Side = 1
+		w.Pilots[pilotKey("AlphaPilot")] = pilot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SelectMissionMech("AlphaPilot", 99); err == nil {
+		t.Fatal("accepted selection for another pilot's seat")
+	}
+	if got := store.Snapshot().Rooms[room.ID].Seats[1][0].MechID; got != 0 {
+		t.Fatalf("peer selection changed to %d", got)
+	}
+}
+
+func TestResetSessionPresenceClearsCrashSeatsAndKeepsPilotProgress(t *testing.T) {
+	store := openTestStore(t)
+	if _, err := store.CreatePilot("CrashPilot"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinPlanet("CrashPilot", SolarisPlanetID); err != nil {
+		t.Fatal(err)
+	}
+	rooms, err := store.RoomsForSolarisCity("CrashPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.JoinAvailableRoom("CrashPilot", rooms[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetReady("CrashPilot", true, time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := store.Pilot("CrashPilot")
+	if err := store.ResetSessionPresence(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _ := reopened.Pilot("CrashPilot")
+	if after.PlayerID != before.PlayerID || after.CallSign != before.CallSign || after.RankPoints != before.RankPoints || after.Location.PlanetID != before.Location.PlanetID || after.Location.CityID != before.Location.CityID || after.Location.RoomID != 0 {
+		t.Fatalf("pilot recovery: before=%+v after=%+v", before, after)
+	}
+	room := reopened.Snapshot().Rooms[rooms[0].ID]
+	if room.Status != RoomOpen || !room.CountdownEnds.IsZero() {
+		t.Fatalf("stale countdown after restart: %+v", room)
+	}
+	for _, lance := range room.Seats {
+		for _, seat := range lance {
+			if seat.CallSign != "" || seat.Ready || seat.AI {
+				t.Fatalf("stale session seat after restart: %+v", seat)
+			}
+		}
+	}
+}

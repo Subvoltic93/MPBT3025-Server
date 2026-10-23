@@ -1,0 +1,11 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "kind": "ready",
+  "fields": {},
+  "strings": {},
+  "command_hex": "5f",
+  "server_frame_hex": "1b215f41252f1b",
+  "native_decode_matches": true,
+  "client_checksum": 283876,
+  "server_checksum": 377996
+}

@@ -1,0 +1,88 @@
+package protocol
+
+import (
+	"encoding/binary"
+	"encoding/hex"
+	"testing"
+)
+
+func TestHostGreetingLayout(t *testing.T) {
+	// Empty reserved-word list is uint16, not uint32. HostParams follows.
+	const fixture = "001d0000000e0000010502024000"
+	if got := hex.EncodeToString(Encode(HostGreeting())); got != fixture {
+		t.Fatalf("greeting = %s", got)
+	}
+}
+
+func TestDecodeMultiplePDUs(t *testing.T) {
+	wire, _ := hex.DecodeString("000900000006001d000000080000")
+	got, err := Decode(wire)
+	if err != nil || len(got) != 2 || got[0].ID != 9 || got[1].ID != 29 {
+		t.Fatalf("%+v, %v", got, err)
+	}
+}
+
+func TestRejectInvalidLengths(t *testing.T) {
+	for _, s := range []string{"00", "000900000000", "000900000005", "000900000007"} {
+		wire, _ := hex.DecodeString(s)
+		if _, err := Decode(wire); err == nil {
+			t.Fatalf("accepted %s", s)
+		}
+	}
+}
+
+func TestPlanetStateNumericElementLayout(t *testing.T) {
+	// The client element serializer writes two uint32 values before either
+	// counted array. A string prefix here would shift the array counts.
+	const fixture = "00a800000021000000010000007900000000000000000000000000000000000000"
+	if got := hex.EncodeToString(Encode(SolarisPlanetStateSchemaProbe())); got != fixture {
+		t.Fatalf("planet-state probe = %s", got)
+	}
+}
+
+func TestOccupantEventsUsePlayerInfoRecord(t *testing.T) {
+	player := PlayerUpdateFor("Subvoltic")
+	for _, occupant := range []PDU{
+		OccupantUpdateFor("Subvoltic"),
+		OccupantArrivedFor("Subvoltic"),
+		OccupantDepartedFor("Subvoltic"),
+	} {
+		if string(occupant.Body) != string(player.Body) {
+			t.Fatalf("occupant event %#x body differs from BTPlayerInfo body: %x != %x", occupant.ID, occupant.Body, player.Body)
+		}
+	}
+	if got := OccupantArrivedFor("Subvoltic").ID; got != OccupantArrivedID {
+		t.Fatalf("occupant arrival ID = %#x, want %#x", got, OccupantArrivedID)
+	}
+	if got := OccupantDepartedFor("Subvoltic").ID; got != OccupantDepartedID {
+		t.Fatalf("occupant departure ID = %#x, want %#x", got, OccupantDepartedID)
+	}
+}
+
+// Regression for the malformed numeric-ID trial: PlayerID's virtual writer
+// emits a string. A bare nonzero uint32 was interpreted as a string length.
+func TestPlayerUpdatesUseStringPlayerIDs(t *testing.T) {
+	for _, id := range []string{"local:1", "local:2"} {
+		player := PlayerUpdateWithID("Subvoltic", id)
+		profile := ProfileUpdateWithID("Subvoltic", id)
+		for _, pdu := range []PDU{player, profile} {
+			n := int(binary.BigEndian.Uint32(pdu.Body[:4]))
+			if n != len(id) || string(pdu.Body[4:4+n]) != id {
+				t.Fatalf("PDU %#x identity = %x, want length-prefixed %q", pdu.ID, pdu.Body, id)
+			}
+		}
+		// The badge and alertable bytes immediately follow PlayerID; the callsign
+		// is another string after those bytes, as in the recovered serializer.
+		start := 4 + len(id) + 2
+		n := int(binary.BigEndian.Uint32(player.Body[start : start+4]))
+		if n != 9 || string(player.Body[start+4:start+4+n]) != "Subvoltic" {
+			t.Fatalf("player callsign is misaligned: %x", player.Body)
+		}
+	}
+}
+
+func TestBootstrapPlayerKeepsEmptyStringID(t *testing.T) {
+	if got := binary.BigEndian.Uint32(PlayerUpdate().Body[:4]); got != 0 {
+		t.Fatalf("bootstrap placeholder ID length = %d, want empty string", got)
+	}
+}

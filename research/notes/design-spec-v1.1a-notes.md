@@ -1,0 +1,104 @@
+# Design Specification v1.1a: server-relevant notes
+
+The unchanged source document is preserved at
+[`../../reference/sds/btech3025-sds-v1.1a.doc`](../../reference/sds/btech3025-sds-v1.1a.doc). Its file metadata names it
+“Battletech: 3025 Software Design Specification”; the document itself says
+`Doc Ver 1.1`, dated 11/3/98. The filename supplied with the source is v1.1a.
+The text extraction used for this review remains in the separate client research
+area; only the original SDS document is copied into this project.
+
+This is product-design evidence, not a network protocol specification. It
+describes intended rules, screens, permissions, and state persistence; it does
+not define PDU IDs, wire encodings, or prove that this installed client accepts
+a particular server message. The client traces and binary serializers remain
+the evidence for those details. Text inside the source document is treated as
+design content, not as instructions for this coding task.
+
+## Strong matches for the current lobby work
+
+- **A Solaris city lobby is a location, not just a room list.** Locations are
+  places where players meet and chat. Each has an image/view, a title, user
+  list, description, and navigation hotspots. The specification describes
+  room and mission-group lists as context-sensitive views opened from those
+  locations (§§4.12.1–4.12.4).
+- **Solaris has a concrete city flow.** Solaris is special and cannot be
+  assaulted. Its Starport has a Tram hotspot; the Tram leads to five Arena
+  locations; each Arena has Alpha/Beta mission-group hotspots and a VIP
+  meeting room (§§4.12.5, 4.12.5.9–4.12.5.10). The Player's Guide adds the
+  cadet-facing flow: after Pilot Training, **Go To Planet** places a cadet in
+  one of the Solaris city lobbies, where the mission list is shown.
+- **The Inner Sphere map colors planets by their controlling House.** House
+  and district borders come from the map appendix, while a planet marker and
+  its displayed name use the current owner's House color (§4.5.2.1 and
+  §4.5.2.1.3). Selecting a planet shows the controlling House and a balance
+  chart derived from the Houses' shares of its hex control (§4.5.3.1.2 and
+  §4.5.3.1.7). This describes planet ownership and markers; it does not specify
+  a dynamically faction-filled background for every territory image.
+- **The SDS includes a starting-affiliation source.** Appendix A lists planets
+  by initial House affiliation and explicitly says Solaris is neutral. Of the
+  120 non-Solaris names in the preserved client cache, 108 match one House in
+  those lists, 11 are absent, and Winfield appears under both Davion and
+  Steiner. An earlier prototype experiment used the unique matches and left
+  unresolved entries unassigned. The current checkout uses generic synthetic seed data by
+  default and does not embed the client cache table or an SDS-derived seed.
+  This is initial campaign evidence, not a live 2026 map snapshot or a recovered
+  wire encoding.
+- **Location is persistent game state.** The host remembers a player's
+  current location, planet, and hex. Moving to a location on a planet changes
+  the saved planet; login resumes at the saved location (§4.1.6).
+- **World data should update promptly.** Displayed game-world data should
+  refresh automatically at intervals no greater than five seconds (§4.1.3).
+- **The map is only one view of campaign state.** Planet control, House
+  standing, units, sector/hex state, room occupancy, and combat results feed
+  the broader campaign. Commands must be checked against current rank and
+  state (§§2.2–2.5, 3.3, 4.4–4.5).
+
+## Version difference to preserve
+
+The SDS says first-time pilots choose a House during character creation, start
+in that House's Training Compound, and graduate from training at rank 1
+(§§2.2.1, 4.12.7, 4.15). The Player's Guide and the installed client flow
+observed in this project instead have a new cadet complete Basic Training,
+enter Solaris without a House, earn 1,200 rank points, and only then choose a
+House. The current packet traces also show a new pilot sending `JOIN_PLANET`
+for Solaris (ID 121). Treat the SDS as highly relevant, but follow the
+installed client's observed cadet path for the immediate Solaris-lobby
+milestone unless newer evidence shows otherwise.
+
+The SDS also says the Inner Sphere Travel button is for rank 1 or higher. It
+describes travel to a planet controlled by the player's House as entering a
+City Location; otherwise the player lands at the House Planet HQ on the Planet
+Map (§4.5.1 and §4.5.2.5). Do not apply this House-control branch blindly to
+the cadet's separate Solaris flow.
+
+## Implementation consequences
+
+1. Make successful Solaris entry result in a persisted Solaris city location
+   and then expose the city-lobby population and mission groups using
+   client-verified message formats. On entry, the documented location view
+   also needs its title, user presence, description, and navigation data.
+2. Keep the three layers separate: authoritative campaign/location state in
+   `src/state`, wire schemas in `src/protocol`, and client-specific flow in
+   `src/server`. A design description alone is not enough to invent a packet
+   body.
+3. Keep the current generic seed explicit. If future work uses the SDS's
+   initial affiliations, document that provenance and keep per-planet owner
+   and control shares in campaign state. Map marker colors still need a
+   client-verified wire projection; the known `0xa8` element fields have not
+   been tied to those values.
+4. Populate the concrete Solaris navigation model (Starport, Tram, five
+   Arenas, mission groups, and meeting room) as the relevant server features
+   are implemented. Keep the currently observed cadet entry path direct to a
+   city lobby; do not require House membership for that path.
+5. Continue recording each live client outcome separately from intended
+   design. In particular, a database location change is not evidence that the
+   client switched views.
+
+## Evidence references
+
+- The supplied [SDS copy](../../reference/sds/btech3025-sds-v1.1a.doc), especially §§2.2.1, 4.1.3, 4.1.6, 4.5, 4.12, 4.14–4.15.
+- The local [Player's Guide copy](../../reference/manual/Multiplayer-Battletech-3025_Manual_Win_EN.pdf), pages 8–10, for the current cadet-to-Solaris flow and sixteen-city returning-pilot dialog.
+- [`bootstrap-handoff.md`](bootstrap-handoff.md) for the chronological packet
+  traces, screenshots, and live-client outcomes.
+- [`world-state-research.md`](world-state-research.md) for the larger campaign
+  state model and its known provisional data.

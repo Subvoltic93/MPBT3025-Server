@@ -1,0 +1,103 @@
+package protocol
+
+import (
+	"bytes"
+	"encoding/hex"
+	"strings"
+	"testing"
+)
+
+func TestChatMessageForMatchesCapturedClientShape(t *testing.T) {
+	message := ChatMessageFor("Subvoltic", "test", ChatChannelAll)
+	wire := Encode(message)
+	const prefix = "0008000000420100000009537562766f6c746963000000000009537562766f6c746963"
+	const suffix = "000000047465737400"
+	want, err := hex.DecodeString(prefix + strings.Repeat("00", chatSenderInfoLength) + suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(wire, want) {
+		t.Fatalf("encoded chat = %x, want captured client-shaped packet %x", wire, want)
+	}
+	if got, err := ChatSenderCallSign(message); err != nil || got != "Subvoltic" {
+		t.Fatalf("chat sender = %q, %v; want Subvoltic", got, err)
+	}
+}
+
+func TestChatMessageParsesLiveClientCapture(t *testing.T) {
+	const prefix = "01000000094265746150696c6f74" +
+		"0000" + "00000009" + "4265746150696c6f74"
+	const suffix = "0000000548656c6c6f00"
+	body, err := hex.DecodeString(prefix + strings.Repeat("00", chatSenderInfoLength) + suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := PDU{ID: ChatMessageID, Body: body}
+	if sender, err := ChatSenderCallSign(message); err != nil || sender != "BetaPilot" {
+		t.Fatalf("captured chat sender = %q, %v; want BetaPilot", sender, err)
+	}
+	if text, err := ChatMessageText(message); err != nil || text != "Hello" {
+		t.Fatalf("captured chat text = %q, %v; want Hello", text, err)
+	}
+	if got := body[len(body)-1]; got != ChatChannelAll {
+		t.Fatalf("captured chat channel = %#x, want All %#x", got, ChatChannelAll)
+	}
+}
+
+func TestChatMessageForCallSignReplacesIdentityAndPreservesTextAndChannel(t *testing.T) {
+	original := ChatMessageFor("Imposter", "hello from the second client", ChatChannelHouse)
+	got, err := ChatMessageForCallSign(original, "BetaPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sender, err := ChatSenderCallSign(got); err != nil || sender != "BetaPilot" {
+		t.Fatalf("canonical chat sender = %q, %v; want BetaPilot", sender, err)
+	}
+	secondCallSignOffset := chatSenderLengthOffset + 4 + len("BetaPilot") + chatSenderCallSignGap
+	if got.Body[secondCallSignOffset+4] != 'B' {
+		t.Fatalf("sender info callsign was not canonicalized: %x", got.Body)
+	}
+	if got.Body[len(got.Body)-1] != ChatChannelHouse {
+		t.Fatalf("channel byte = %#x, want House %#x", got.Body[len(got.Body)-1], ChatChannelHouse)
+	}
+	if !bytes.Contains(got.Body, []byte("hello from the second client")) {
+		t.Fatalf("canonical chat body lost its text: %x", got.Body)
+	}
+	if _, err := ChatMessageForCallSign(original, "bad"); err == nil {
+		t.Fatal("accepted a session callsign shorter than the client allows")
+	}
+}
+
+func TestChatMessageForDisplayPreservesTextAndCanonicalizesSender(t *testing.T) {
+	original := ChatMessageFor("Imposter", "ready up", ChatChannelAll)
+	got, err := ChatMessageForDisplay(original, "BetaPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sender, err := ChatSenderCallSign(got); err != nil || sender != "BetaPilot" {
+		t.Fatalf("display chat sender = %q, %v; want BetaPilot", sender, err)
+	}
+	if text, err := ChatMessageText(got); err != nil || text != "ready up" {
+		t.Fatalf("display chat text = %q, %v; want unchanged text %q", text, err, "ready up")
+	}
+	if got.Body[len(got.Body)-1] != ChatChannelAll {
+		t.Fatalf("display chat channel = %#x, want All %#x", got.Body[len(got.Body)-1], ChatChannelAll)
+	}
+	// Canonicalizing a message twice does not add a text prefix.
+	alreadyLabelled := ChatMessageFor("BetaPilot", "ready up", ChatChannelAll)
+	again, err := ChatMessageForDisplay(alreadyLabelled, "BetaPilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, err := ChatMessageText(again); err != nil || text != "ready up" {
+		t.Fatalf("canonicalized text = %q, %v; want unchanged text", text, err)
+	}
+}
+
+func TestChatSenderRejectsMalformedLength(t *testing.T) {
+	message := ChatMessageFor("AlphaPilot", "hello", ChatChannelAll)
+	message.Body[chatSenderLengthOffset+3] = 0xff
+	if _, err := ChatSenderCallSign(message); err == nil {
+		t.Fatal("accepted an out-of-bounds sender length")
+	}
+}

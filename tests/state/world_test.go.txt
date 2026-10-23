@@ -1,0 +1,108 @@
+package state
+
+import (
+	"encoding/json"
+	"mpbt3025/data"
+	"testing"
+)
+
+func TestSyntheticWorldSeed(t *testing.T) {
+	world, err := DefaultWorld()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[HouseID]int{
+		HouseDavion: 25, HouseKurita: 25, HouseLiao: 20,
+		HouseMarik: 25, HouseSteiner: 25,
+	}
+	for _, planet := range world.Planets {
+		if planet.ID == SolarisPlanetID {
+			if planet.Owner != "" {
+				t.Fatalf("Solaris owner = %q, want neutral", planet.Owner)
+			}
+			continue
+		}
+		if planet.ControlPercent[planet.Owner] != 100 {
+			t.Fatalf("planet %d (%s) has owner %q without full control", planet.ID, planet.Name, planet.Owner)
+		}
+		want[planet.Owner]--
+	}
+	for house, count := range want {
+		if count != 0 {
+			t.Errorf("%s has %d fewer planets than the cache", house, count)
+		}
+	}
+	if world.Planets[83].Owner != HouseSteiner {
+		t.Fatalf("Planet 083 owner = %q, want synthetic Steiner seed", world.Planets[83].Owner)
+	}
+}
+
+func TestSDSSeedMigrationPreservesEditedOwnership(t *testing.T) {
+	world, err := DefaultWorld()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := data.Files.ReadFile("planet_sds_owners_v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var owners map[int]HouseID
+	if err := json.Unmarshal(data, &owners); err != nil {
+		t.Fatal(err)
+	}
+	world.OwnershipSeedVersion = 1
+	for id, planet := range world.Planets {
+		planet.Owner = owners[id]
+		for _, house := range houseOrder {
+			planet.ControlPercent[house] = 0
+		}
+		if planet.Owner != "" {
+			planet.ControlPercent[planet.Owner] = 100
+		}
+		world.Planets[id] = planet
+	}
+	changed, err := world.migrateLegacySyntheticOwnership()
+	if err != nil || !changed || world.OwnershipSeedVersion != 2 || world.Planets[83].Owner != HouseSteiner {
+		t.Fatalf("SDS migration: changed=%t error=%v version=%d Dixie=%q", changed, err, world.OwnershipSeedVersion, world.Planets[83].Owner)
+	}
+	planet := world.Planets[83]
+	planet.Owner = HouseMarik
+	planet.ControlPercent[HouseSteiner] = 0
+	planet.ControlPercent[HouseMarik] = 100
+	world.Planets[83] = planet
+	world.OwnershipSeedVersion = 1
+	changed, err = world.migrateLegacySyntheticOwnership()
+	if err != nil || changed || world.Planets[83].Owner != HouseMarik {
+		t.Fatalf("edited ownership was overwritten: changed=%t error=%v owner=%q", changed, err, world.Planets[83].Owner)
+	}
+}
+
+func TestSyntheticSeedMigrationPreservesEditedOwnership(t *testing.T) {
+	world, err := DefaultWorld()
+	if err != nil {
+		t.Fatal(err)
+	}
+	world.OwnershipSeedVersion = 0
+	for id, planet := range world.Planets {
+		planet.Owner = ""
+		if id != SolarisPlanetID {
+			planet.Owner = houseOrder[(id-1)%len(houseOrder)]
+		}
+		for _, house := range houseOrder {
+			planet.ControlPercent[house] = 0
+		}
+		if planet.Owner != "" {
+			planet.ControlPercent[planet.Owner] = 100
+		}
+		world.Planets[id] = planet
+	}
+	changed, err := world.migrateLegacySyntheticOwnership()
+	if err != nil || !changed || world.OwnershipSeedVersion != 2 || world.Planets[83].Owner != HouseSteiner {
+		t.Fatalf("synthetic migration: changed=%t error=%v version=%d Dixie=%q", changed, err, world.OwnershipSeedVersion, world.Planets[83].Owner)
+	}
+	world.OwnershipSeedVersion = 0
+	changed, err = world.migrateLegacySyntheticOwnership()
+	if err != nil || changed || world.Planets[83].Owner != HouseSteiner {
+		t.Fatalf("updated owner was overwritten: changed=%t error=%v owner=%q", changed, err, world.Planets[83].Owner)
+	}
+}

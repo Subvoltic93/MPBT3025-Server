@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tests — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>Tests</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="../index.html">Status</a>
+<a href="../readme.html">README</a>
+<a href="../protocol.html">Protocol</a>
+<a href="../research.html">Research</a>
+<a href="../roadmap.html">Roadmap</a>
+<a href="../project-files.html" class="current" aria-current="page">Project files</a></nav>
+  <main><article class="document"><h1>Tests</h1>
+<p>Test sources are grouped here by their corresponding package under <code>src/</code>. Their <code>.go.txt</code> suffix keeps Go from discovering these directories as duplicate packages while leaving the tests physically separate from production code.</p>
+<p>Run the suite from the project root with <code>./scripts/test.sh</code>. The script uses a temporary Go overlay to expose each test source at the matching <code>src/</code> package path, so tests can still inspect package-private protocol and state behavior. Combat command fixture JSON is stored in <a href="#local-artifacts"><code>../data/test-fixtures/</code></a>.</p>
+<aside class="file-note" id="local-artifacts">Some links in this historical note point to local client captures or runtime logs that are not included in the published project.</aside></article></main>
+  <footer class="site-footer">
+    <p><a href="../project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

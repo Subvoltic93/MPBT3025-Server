@@ -1,0 +1,3 @@
+-- Database schema placeholder.
+-- The current server stores campaign state as JSON through src/state.
+-- Select a database engine and migration strategy before defining tables.

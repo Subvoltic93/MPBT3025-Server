@@ -1,0 +1,938 @@
+package server
+
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"mpbt3025/src/protocol/aries"
+	"mpbt3025/src/protocol/game"
+	"mpbt3025/src/state"
+)
+
+type pduReadResult struct {
+	pdu protocol.PDU
+	err error
+}
+
+func readPDUAsync(conn net.Conn) <-chan pduReadResult {
+	result := make(chan pduReadResult, 1)
+	go func() {
+		result <- readPDUResult(conn)
+	}()
+	return result
+}
+
+func readPDUsAsync(conn net.Conn, count int) <-chan pduReadResult {
+	results := make(chan pduReadResult, count)
+	go func() {
+		defer close(results)
+		for i := 0; i < count; i++ {
+			result := readPDUResult(conn)
+			results <- result
+			if result.err != nil {
+				return
+			}
+		}
+	}()
+	return results
+}
+
+func readPDUResult(conn net.Conn) pduReadResult {
+	frame, err := aries.Read(conn)
+	if err != nil {
+		return pduReadResult{err: err}
+	}
+	if frame.Type != aries.Data {
+		return pduReadResult{err: fmt.Errorf("frame type = %#x, want Aries data %#x", frame.Type, aries.Data)}
+	}
+	pdus, err := protocol.Decode(frame.Payload)
+	if err != nil {
+		return pduReadResult{err: err}
+	}
+	if len(pdus) != 1 {
+		return pduReadResult{err: fmt.Errorf("decoded PDU count = %d, want 1", len(pdus))}
+	}
+	return pduReadResult{pdu: pdus[0]}
+}
+
+func sendChatAndRead(t *testing.T, sender net.Conn, message protocol.PDU, recipients ...net.Conn) []protocol.PDU {
+	t.Helper()
+	reads := make([]<-chan pduReadResult, len(recipients))
+	for i, recipient := range recipients {
+		reads[i] = readPDUAsync(recipient)
+	}
+	writePDU(t, sender, message)
+	results := make([]protocol.PDU, len(recipients))
+	for i, read := range reads {
+		select {
+		case result := <-read:
+			if result.err != nil {
+				t.Fatalf("read chat recipient %d: %v", i, result.err)
+			}
+			results[i] = result.pdu
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for chat recipient %d", i)
+		}
+	}
+	return results
+}
+
+func expectedDisplayedChat(t *testing.T, message protocol.PDU, callSign string) protocol.PDU {
+	t.Helper()
+	displayed, err := protocol.ChatMessageForDisplay(message, callSign)
+	if err != nil {
+		t.Fatalf("build displayed chat for %q: %v", callSign, err)
+	}
+	return displayed
+}
+
+// This exercises the same bootstrap, pilot-creation, planet-state, and lobby
+// request path used by the local client, but with a synthetic Aries peer. It
+// does not establish that the original Windows client accepts a transition.
+func TestServeSolarisBootstrapJoinAndEmptyLobby(t *testing.T) {
+	runtimeDir := t.TempDir()
+	traceDir := filepath.Join(runtimeDir, "traces")
+	if err := os.Mkdir(traceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	world, err := state.Open(filepath.Join(runtimeDir, "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planetReply := protocol.FullPlanetStateSchemaProbe()
+	hub := newSessionHub()
+
+	serverConn, clientConn := net.Pipe()
+	serverDone := make(chan error, 1)
+	go func() {
+		defer serverConn.Close()
+		serverDone <- serve(serverConn, traceDir, &planetReply, world, "", hub, true)
+	}()
+	finished := false
+	t.Cleanup(func() {
+		_ = clientConn.Close()
+		if !finished {
+			select {
+			case <-serverDone:
+			case <-time.After(2 * time.Second):
+				t.Error("server handler did not stop after client disconnect")
+			}
+		}
+	})
+
+	loginRequest := readFrame(t, clientConn)
+	if loginRequest.Type != aries.LoginRequest {
+		t.Fatalf("first frame type = %#x, want login request %#x", loginRequest.Type, aries.LoginRequest)
+	}
+	writeFrame(t, clientConn, aries.Frame{Type: aries.Login})
+	assertPDU(t, readPDU(t, clientConn), protocol.HostOnline)
+
+	writePDU(t, clientConn, protocol.PDU{ID: protocol.ClientOnline})
+	for _, want := range []uint16{protocol.PlayerUpdateID, protocol.ProfileUpdateID, protocol.StaticConfigUpdate} {
+		assertPDU(t, readPDU(t, clientConn), want)
+	}
+	writePDU(t, clientConn, protocol.PDU{ID: protocol.StaticConfigResponse})
+	synced := readPDU(t, clientConn)
+	assertPDU(t, synced, protocol.StaticConfigUpdate)
+	if len(synced.Body) != 22 || synced.Body[0] != 1 {
+		t.Fatalf("configuration sync body = %x, want 22-byte synchronized update", synced.Body)
+	}
+
+	const callSign = "SolarisTest"
+	createBody := binary.BigEndian.AppendUint32(nil, uint32(len(callSign)))
+	createBody = append(createBody, callSign...)
+	createBody = binary.BigEndian.AppendUint32(createBody, 0)
+	writePDU(t, clientConn, protocol.PDU{ID: protocol.CreateCharacter, Body: createBody})
+	assertPDU(t, readPDU(t, clientConn), protocol.CreateCharacterReply)
+	pilot, ok := world.Pilot(callSign)
+	if !ok {
+		t.Fatal("created pilot is missing from world store")
+	}
+	pilotRecord := protocol.OccupantUpdateFor(callSign)
+
+	joinBody := binary.BigEndian.AppendUint32(nil, state.SolarisPlanetID)
+	joinBody = binary.BigEndian.AppendUint32(joinBody, 0)
+	writePDU(t, clientConn, protocol.PDU{ID: protocol.JoinPlanet, Body: joinBody})
+	localOccupant := readPDU(t, clientConn)
+	assertPDU(t, localOccupant, protocol.OccupantUpdateID)
+	if !bytes.Equal(localOccupant.Body, pilotRecord.Body) {
+		t.Fatalf("local occupant update body = %x, want the pilot BTPlayerInfo record", localOccupant.Body)
+	}
+	occupant := readPDU(t, clientConn)
+	assertPDU(t, occupant, protocol.OccupantArrivedID)
+	if !bytes.Equal(occupant.Body, pilotRecord.Body) {
+		t.Fatalf("occupant arrival body = %x, want the pilot BTPlayerInfo record", occupant.Body)
+	}
+	joiningRoomList := readPDU(t, clientConn)
+	assertPDU(t, joiningRoomList, protocol.ReadyRoomList)
+	if !bytes.Equal(joiningRoomList.Body, make([]byte, 8)) {
+		t.Fatalf("post-join ready-room list body = %x, want the empty two-container form", joiningRoomList.Body)
+	}
+
+	globalStateBody := binary.BigEndian.AppendUint32(nil, 0)
+	writePDU(t, clientConn, protocol.PDU{ID: protocol.RequestPlanetStates, Body: globalStateBody})
+	planetStates := readPDU(t, clientConn)
+	assertPDU(t, planetStates, protocol.PlanetStateList)
+	assertFullPlanetKeys(t, planetStates)
+
+	pilot, ok = world.Pilot(callSign)
+	if pilot.Location.PlanetID != state.SolarisPlanetID {
+		t.Fatalf("pilot planet ID = %d, want Solaris ID %d", pilot.Location.PlanetID, state.SolarisPlanetID)
+	}
+
+	lobbyBody := binary.BigEndian.AppendUint32(nil, state.SolarisPlanetID)
+	writePDU(t, clientConn, protocol.PDU{ID: protocol.RequestLobbyRooms, Body: lobbyBody})
+	roomList := readPDU(t, clientConn)
+	assertPDU(t, roomList, protocol.ReadyRoomList)
+	if !bytes.Equal(roomList.Body, make([]byte, 8)) {
+		t.Fatalf("ready-room list body = %x, want the empty two-container form", roomList.Body)
+	}
+
+	_ = clientConn.Close()
+	if err := <-serverDone; !errors.Is(err, io.EOF) {
+		t.Fatalf("server handler error after client disconnect = %v, want EOF", err)
+	}
+	finished = true
+
+	traces, err := os.ReadDir(traceDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traces) != 1 {
+		t.Fatalf("trace count = %d, want 1", len(traces))
+	}
+	trace, err := os.ReadFile(filepath.Join(traceDir, traces[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, packet := range [][]byte{
+		[]byte("00 91 00 00 00 0e"),
+		[]byte("00 a7 00 00 00 0a"),
+		[]byte("00 a8 00 00 08 19"),
+		[]byte("00 ad 00 00 00 0a"),
+		[]byte("00 97 00 00 00 0e"),
+	} {
+		if !bytes.Contains(trace, packet) {
+			t.Errorf("trace is missing packet prefix %q", packet)
+		}
+	}
+}
+
+func TestSessionHubSharesConnectedPlanetOccupants(t *testing.T) {
+	hub := newSessionHub()
+	var firstUpdates, secondUpdates, thirdUpdates []protocol.PDU
+	first := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		firstUpdates = append(firstUpdates, pdu)
+		return nil
+	}}
+	second := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		secondUpdates = append(secondUpdates, pdu)
+		return nil
+	}}
+	third := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		thirdUpdates = append(thirdUpdates, pdu)
+		return nil
+	}}
+
+	alphaRecord := protocol.PlayerUpdateFor("AlphaPilot")
+	betaRecord := protocol.PlayerUpdateFor("BetaPilot")
+	gammaRecord := protocol.PlayerUpdateFor("GammaPilot")
+	hub.publishPlanetJoin(first, state.Pilot{CallSign: "AlphaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}})
+	if len(firstUpdates) != 2 || firstUpdates[0].ID != protocol.OccupantUpdateID || !bytes.Equal(firstUpdates[0].Body, alphaRecord.Body) || firstUpdates[1].ID != protocol.OccupantArrivedID || !bytes.Equal(firstUpdates[1].Body, alphaRecord.Body) {
+		t.Fatalf("first client's initial occupant updates = %#v, want its own 0x94 roster update followed by 0x2b arrival", firstUpdates)
+	}
+	hub.publishPlanetJoin(second, state.Pilot{CallSign: "BetaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}})
+	if len(firstUpdates) != 3 || firstUpdates[2].ID != protocol.OccupantUpdateID || !bytes.Equal(firstUpdates[2].Body, betaRecord.Body) {
+		t.Fatalf("first client updates after second join = %#v, want only BetaPilot's 0x94 record; 0x3c would replace the local pilot", firstUpdates)
+	}
+	if len(secondUpdates) != 3 || secondUpdates[0].ID != protocol.OccupantUpdateID || !bytes.Equal(secondUpdates[0].Body, betaRecord.Body) || secondUpdates[1].ID != protocol.OccupantUpdateID || !bytes.Equal(secondUpdates[1].Body, alphaRecord.Body) || secondUpdates[2].ID != protocol.OccupantArrivedID || !bytes.Equal(secondUpdates[2].Body, betaRecord.Body) {
+		t.Fatalf("second client updates = %#v, want its own 0x94, AlphaPilot's 0x94, then BetaPilot's 0x2b arrival", secondUpdates)
+	}
+
+	hub.remove(first)
+	hub.publishPlanetJoin(third, state.Pilot{CallSign: "GammaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}})
+	if len(thirdUpdates) != 3 || thirdUpdates[0].ID != protocol.OccupantUpdateID || !bytes.Equal(thirdUpdates[0].Body, gammaRecord.Body) || thirdUpdates[1].ID != protocol.OccupantUpdateID || !bytes.Equal(thirdUpdates[1].Body, betaRecord.Body) || thirdUpdates[2].ID != protocol.OccupantArrivedID || !bytes.Equal(thirdUpdates[2].Body, gammaRecord.Body) {
+		t.Fatalf("third client updates = %#v, want its own 0x94, BetaPilot's 0x94, then GammaPilot's 0x2b arrival", thirdUpdates)
+	}
+	if len(secondUpdates) != 5 || secondUpdates[3].ID != protocol.OccupantDepartedID || !bytes.Equal(secondUpdates[3].Body, alphaRecord.Body) || secondUpdates[4].ID != protocol.OccupantUpdateID || !bytes.Equal(secondUpdates[4].Body, gammaRecord.Body) {
+		t.Fatalf("second client updates after disconnect and third join = %#v, want AlphaPilot departure then GammaPilot's 0x94 record", secondUpdates)
+	}
+}
+
+func TestSessionHubRoutesAllChatToTheSameCurrentLocation(t *testing.T) {
+	hub := newSessionHub()
+	var firstMessages, secondMessages, otherCityMessages, otherPlanetMessages []protocol.PDU
+	first := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		firstMessages = append(firstMessages, pdu)
+		return nil
+	}}
+	second := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		secondMessages = append(secondMessages, pdu)
+		return nil
+	}}
+	otherCity := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		otherCityMessages = append(otherCityMessages, pdu)
+		return nil
+	}}
+	otherPlanet := &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+		otherPlanetMessages = append(otherPlanetMessages, pdu)
+		return nil
+	}}
+	hub.publishPlanetJoin(first, state.Pilot{CallSign: "AlphaPilot", House: state.HouseDavion, Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}})
+	hub.publishPlanetJoin(second, state.Pilot{CallSign: "BetaPilot", House: state.HouseKurita, Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}})
+	hub.publishPlanetJoin(otherCity, state.Pilot{CallSign: "GammaPilot", House: state.HouseDavion, Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 2}})
+	hub.publishPlanetJoin(otherPlanet, state.Pilot{CallSign: "DeltaPilot", Location: state.Location{PlanetID: 1, CityID: 1}})
+	firstMessages, secondMessages, otherCityMessages, otherPlanetMessages = nil, nil, nil, nil
+
+	message := protocol.ChatMessageFor("AlphaPilot", "all-message", protocol.ChatChannelAll)
+	hub.publishPlanetChat(first, message)
+	wantMessage := expectedDisplayedChat(t, message, "AlphaPilot")
+	if len(firstMessages) != 1 || firstMessages[0].ID != wantMessage.ID || !bytes.Equal(firstMessages[0].Body, wantMessage.Body) {
+		t.Fatalf("sender chat echo = %#v, want the callsign-labelled chat PDU", firstMessages)
+	}
+	if len(secondMessages) != 1 || secondMessages[0].ID != wantMessage.ID || !bytes.Equal(secondMessages[0].Body, wantMessage.Body) {
+		t.Fatalf("same-location All chat relay = %#v, want the callsign-labelled chat PDU", secondMessages)
+	}
+	if len(otherCityMessages) != 0 {
+		t.Fatalf("other-city All chat messages = %#v, want none", otherCityMessages)
+	}
+	if len(otherPlanetMessages) != 0 {
+		t.Fatalf("other-planet chat messages = %#v, want none", otherPlanetMessages)
+	}
+}
+
+func TestSessionHubRoutesHouseChatOnlyToPilotsInTheSameHouseAndLocation(t *testing.T) {
+	hub := newSessionHub()
+	var senderMessages, sameHouseMessages, otherHouseMessages, unassignedMessages, otherCityMessages []protocol.PDU
+	sender := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { senderMessages = append(senderMessages, pdu); return nil }}
+	sameHouse := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { sameHouseMessages = append(sameHouseMessages, pdu); return nil }}
+	otherHouse := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { otherHouseMessages = append(otherHouseMessages, pdu); return nil }}
+	unassigned := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { unassignedMessages = append(unassignedMessages, pdu); return nil }}
+	otherCity := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { otherCityMessages = append(otherCityMessages, pdu); return nil }}
+	location := state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}
+	hub.publishPlanetJoin(sender, state.Pilot{CallSign: "AlphaPilot", House: state.HouseDavion, Location: location})
+	hub.publishPlanetJoin(sameHouse, state.Pilot{CallSign: "BetaPilot", House: state.HouseDavion, Location: location})
+	hub.publishPlanetJoin(otherHouse, state.Pilot{CallSign: "GammaPilot", House: state.HouseKurita, Location: location})
+	hub.publishPlanetJoin(unassigned, state.Pilot{CallSign: "DeltaPilot", Location: location})
+	hub.publishPlanetJoin(otherCity, state.Pilot{CallSign: "EpsilonPilot", House: state.HouseDavion, Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 2}})
+	senderMessages, sameHouseMessages, otherHouseMessages, unassignedMessages, otherCityMessages = nil, nil, nil, nil, nil
+
+	message := protocol.ChatMessageFor("AlphaPilot", "house-message", protocol.ChatChannelHouse)
+	hub.publishPlanetChat(sender, message)
+	wantMessage := expectedDisplayedChat(t, message, "AlphaPilot")
+	if len(senderMessages) != 1 || !bytes.Equal(senderMessages[0].Body, wantMessage.Body) {
+		t.Fatalf("sender House-chat echo = %#v, want the callsign-labelled chat PDU", senderMessages)
+	}
+	if len(sameHouseMessages) != 1 || !bytes.Equal(sameHouseMessages[0].Body, wantMessage.Body) {
+		t.Fatalf("same-House chat delivery = %#v, want the callsign-labelled chat PDU", sameHouseMessages)
+	}
+	for label, messages := range map[string][]protocol.PDU{
+		"other House":      otherHouseMessages,
+		"unassigned pilot": unassignedMessages,
+		"other city":       otherCityMessages,
+	} {
+		if len(messages) != 0 {
+			t.Errorf("%s received House chat: %#v, want none", label, messages)
+		}
+	}
+}
+
+func TestSessionHubRoutesTeamChatOnlyToSeatedPilotsOnTheSameLance(t *testing.T) {
+	hub := newSessionHub()
+	var senderMessages, sameTeamMessages, enemyMessages, observerMessages, otherRoomMessages [][]byte
+	newSession := func(messages *[][]byte) *liveSession {
+		return &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+			*messages = append(*messages, append([]byte(nil), pdu.Body...))
+			return nil
+		}}
+	}
+	sender := newSession(&senderMessages)
+	sameTeam := newSession(&sameTeamMessages)
+	enemy := newSession(&enemyMessages)
+	observer := newSession(&observerMessages)
+	otherRoom := newSession(&otherRoomMessages)
+
+	hub.publishPlanetJoin(sender, state.Pilot{CallSign: "AlphaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 7, Side: 0}})
+	hub.publishPlanetJoin(sameTeam, state.Pilot{CallSign: "BetaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 7, Side: 0}})
+	hub.publishPlanetJoin(enemy, state.Pilot{CallSign: "GammaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 7, Side: 1}})
+	hub.publishPlanetJoin(observer, state.Pilot{CallSign: "DeltaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 7, Side: -1}})
+	hub.publishPlanetJoin(otherRoom, state.Pilot{CallSign: "EpsilonPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 8, Side: 0}})
+	senderMessages, sameTeamMessages, enemyMessages, observerMessages, otherRoomMessages = nil, nil, nil, nil, nil
+
+	message := protocol.ChatMessageFor("AlphaPilot", "team-message", protocol.ChatChannelTeam)
+	hub.publishPlanetChat(sender, message)
+	if len(senderMessages) != 1 {
+		t.Fatalf("sender Team-chat echo count = %d, want one", len(senderMessages))
+	}
+	if len(sameTeamMessages) != 1 {
+		t.Fatalf("same-lance Team-chat delivery count = %d, want one", len(sameTeamMessages))
+	}
+	for label, body := range map[string][]byte{"sender": senderMessages[0], "teammate": sameTeamMessages[0]} {
+		pdu := protocol.PDU{ID: protocol.ChatMessageID, Body: body}
+		if callsign, err := protocol.ChatSenderCallSign(pdu); err != nil || callsign != "AlphaPilot" {
+			t.Errorf("%s Team-chat sender = %q, %v; want AlphaPilot", label, callsign, err)
+		}
+		if body[len(body)-1] != protocol.ChatChannelTeam {
+			t.Errorf("%s Team-chat channel = %#x, want Team %#x", label, body[len(body)-1], protocol.ChatChannelTeam)
+		}
+		if text, err := protocol.ChatMessageText(pdu); err != nil || text != "team-message" {
+			t.Errorf("%s Team-chat text = %q, %v; want unchanged text", label, text, err)
+		}
+	}
+	for label, messages := range map[string][][]byte{
+		"opposing lance":     enemyMessages,
+		"noncombat observer": observerMessages,
+		"different room":     otherRoomMessages,
+	} {
+		if len(messages) != 0 {
+			t.Errorf("%s received Team chat: %v, want none", label, messages)
+		}
+	}
+}
+
+func TestSessionHubAllChatIncludesObserversInTheSameMissionRoom(t *testing.T) {
+	hub := newSessionHub()
+	var playerMessages, observerMessages, otherRoomMessages [][]byte
+	newSession := func(messages *[][]byte) *liveSession {
+		return &liveSession{sendGamePDU: func(pdu protocol.PDU) error {
+			*messages = append(*messages, append([]byte(nil), pdu.Body...))
+			return nil
+		}}
+	}
+	player := newSession(&playerMessages)
+	observer := newSession(&observerMessages)
+	otherRoom := newSession(&otherRoomMessages)
+	hub.publishPlanetJoin(player, state.Pilot{CallSign: "AlphaPilot", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 7, Side: 0}})
+	hub.publishPlanetJoin(observer, state.Pilot{CallSign: "Observer", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 7, Side: -1}})
+	hub.publishPlanetJoin(otherRoom, state.Pilot{CallSign: "OtherRoom", Location: state.Location{PlanetID: state.SolarisPlanetID, CityID: 1, RoomID: 8, Side: -1}})
+	playerMessages, observerMessages, otherRoomMessages = nil, nil, nil
+
+	message := protocol.ChatMessageFor("AlphaPilot", "observer-visible", protocol.ChatChannelAll)
+	hub.publishPlanetChat(player, message)
+	if len(playerMessages) != 1 || len(observerMessages) != 1 {
+		t.Fatalf("All chat deliveries: player=%d observer=%d, want one each", len(playerMessages), len(observerMessages))
+	}
+	for label, body := range map[string][]byte{"player": playerMessages[0], "observer": observerMessages[0]} {
+		text, err := protocol.ChatMessageText(protocol.PDU{ID: protocol.ChatMessageID, Body: body})
+		if err != nil || text != "observer-visible" {
+			t.Errorf("%s observer-visible text = %q, %v; want unchanged text", label, text, err)
+		}
+	}
+	if len(otherRoomMessages) != 0 {
+		t.Fatalf("other-room All messages = %v, want none", otherRoomMessages)
+	}
+}
+
+func TestSessionHubDoesNotBroadcastUnrecognizedChatChannels(t *testing.T) {
+	hub := newSessionHub()
+	var senderMessages, peerMessages []protocol.PDU
+	sender := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { senderMessages = append(senderMessages, pdu); return nil }}
+	peer := &liveSession{sendGamePDU: func(pdu protocol.PDU) error { peerMessages = append(peerMessages, pdu); return nil }}
+	location := state.Location{PlanetID: state.SolarisPlanetID, CityID: 1}
+	hub.publishPlanetJoin(sender, state.Pilot{CallSign: "AlphaPilot", Location: location})
+	hub.publishPlanetJoin(peer, state.Pilot{CallSign: "BetaPilot", Location: location})
+	senderMessages, peerMessages = nil, nil
+
+	message := protocol.ChatMessageFor("AlphaPilot", "unknown-channel", 0xfe)
+	hub.publishPlanetChat(sender, message)
+	wantMessage := expectedDisplayedChat(t, message, "AlphaPilot")
+	if len(senderMessages) != 1 || !bytes.Equal(senderMessages[0].Body, wantMessage.Body) {
+		t.Fatalf("sender echo = %#v, want the callsign-labelled chat PDU", senderMessages)
+	}
+	if len(peerMessages) != 0 {
+		t.Fatalf("unavailable-channel peer messages = %#v, want none", peerMessages)
+	}
+}
+
+func TestSolarisMissionSeatNumbersAreUniqueAcrossLances(t *testing.T) {
+	world, err := state.Open(filepath.Join(t.TempDir(), "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, callSign := range []string{"AlphaPilot", "BetaPilot"} {
+		if _, err := world.CreatePilot(callSign); err != nil {
+			t.Fatal(err)
+		}
+		if err := world.JoinPlanet(callSign, state.SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alpha, _ := world.Pilot("AlphaPilot")
+	infos, err := solarisMissionRooms(world, alpha)
+	if err != nil || len(infos) == 0 {
+		t.Fatalf("Solaris mission rooms = %d, %v", len(infos), err)
+	}
+	roomID := int(infos[0].ID.Number)
+	for _, callSign := range []string{"AlphaPilot", "BetaPilot"} {
+		if err := world.JoinAvailableRoom(callSign, roomID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	combat := missionCombat(world, infos[0])
+	wireSeats, err := parseCombatSeatKeys(combat.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wireSeats) != 8 {
+		t.Fatalf("CombatInfo seat count = %d, want 8", len(wireSeats))
+	}
+	gotOccupied := map[string][2]byte{}
+	for _, seat := range missionSeatUpdates(world, roomID) {
+		gotOccupied[seat.CallSign] = [2]byte{seat.Number, seat.Team}
+	}
+	want := map[string][2]byte{"AlphaPilot": {1, 1}, "BetaPilot": {5, 2}}
+	if !equalSeatKeys(gotOccupied, want) {
+		t.Fatalf("seat update keys = %#v, want %#v", gotOccupied, want)
+	}
+	wireKeys := map[[2]byte]bool{}
+	for _, key := range wireSeats {
+		if key[0] == 0 || key[0] > 8 || (key[1] < 1 || key[1] > 2) || wireKeys[key] {
+			t.Fatalf("invalid or duplicate CombatInfo seat key = %v", key)
+		}
+		wireKeys[key] = true
+	}
+	for _, key := range [][2]byte{{1, 1}, {5, 2}} {
+		if !wireKeys[key] {
+			t.Fatalf("CombatInfo missing occupied seat key %v", key)
+		}
+	}
+
+	if err := world.SetReady("BetaPilot", true, time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]byte{}
+	for _, seat := range missionSeatUpdates(world, roomID) {
+		states[seat.CallSign] = seat.State
+	}
+	if states["AlphaPilot"] != protocol.CombatSeatStateNotReady || states["BetaPilot"] != protocol.CombatSeatStateReady {
+		t.Fatalf("mission seat states after Ready = %#v, want Alpha not ready and Beta ready", states)
+	}
+}
+
+func equalSeatKeys(got, want map[string][2]byte) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for callSign, key := range want {
+		if got[callSign] != key {
+			return false
+		}
+	}
+	return true
+}
+
+// parseCombatSeatKeys skips the variable-length RoomID and reads the seat
+// number/team bytes from the fixed CombatInfo record layout.
+func parseCombatSeatKeys(body []byte) ([][2]byte, error) {
+	if len(body) < 8 {
+		return nil, errors.New("short CombatInfo")
+	}
+	offset := 8 + int(binary.BigEndian.Uint32(body[4:8])) + 16 + 3
+	if offset+4 > len(body) {
+		return nil, errors.New("short CombatInfo seat count")
+	}
+	count := int(binary.BigEndian.Uint32(body[offset : offset+4]))
+	offset += 4
+	keys := make([][2]byte, 0, count)
+	readString := func() error {
+		if offset+4 > len(body) {
+			return errors.New("short CombatInfo string length")
+		}
+		size := int(binary.BigEndian.Uint32(body[offset : offset+4]))
+		offset += 4
+		if size < 0 || offset+size > len(body) {
+			return errors.New("invalid CombatInfo string length")
+		}
+		offset += size
+		return nil
+	}
+	for i := 0; i < count; i++ {
+		if offset+2 > len(body) {
+			return nil, errors.New("short CombatInfo seat key")
+		}
+		keys = append(keys, [2]byte{body[offset], body[offset+1]})
+		offset += 2
+		if err := readString(); err != nil {
+			return nil, err
+		}
+		if offset+10 > len(body) {
+			return nil, errors.New("short CombatInfo seat lite")
+		}
+		offset += 10 // house, rank, badge, weight class
+		if err := readString(); err != nil {
+			return nil, err
+		}
+		if offset+30 > len(body) {
+			return nil, errors.New("short CombatInfo seat tail")
+		}
+		offset += 30 // mech id, state, and combat statistics
+	}
+	return keys, nil
+}
+
+func TestServeBroadcastsPlanetOccupantsBetweenClients(t *testing.T) {
+	runtimeDir := t.TempDir()
+	traceDir := filepath.Join(runtimeDir, "traces")
+	if err := os.Mkdir(traceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	world, err := state.Open(filepath.Join(runtimeDir, "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := newSessionHub()
+	planetReply := protocol.FullPlanetStateSchemaProbe()
+
+	startClient := func(callSign string) (net.Conn, <-chan error) {
+		t.Helper()
+		serverConn, clientConn := net.Pipe()
+		done := make(chan error, 1)
+		go func() {
+			defer serverConn.Close()
+			done <- serve(serverConn, traceDir, &planetReply, world, "", hub, false)
+		}()
+
+		if greeting := readFrame(t, clientConn); greeting.Type != aries.LoginRequest {
+			t.Fatalf("first frame type = %#x, want Aries login request %#x", greeting.Type, aries.LoginRequest)
+		}
+		writeFrame(t, clientConn, aries.Frame{Type: aries.Login})
+		assertPDU(t, readPDU(t, clientConn), protocol.HostOnline)
+		writePDU(t, clientConn, protocol.PDU{ID: protocol.ClientOnline})
+		for _, want := range []uint16{protocol.PlayerUpdateID, protocol.ProfileUpdateID, protocol.StaticConfigUpdate} {
+			assertPDU(t, readPDU(t, clientConn), want)
+		}
+		writePDU(t, clientConn, protocol.PDU{ID: protocol.StaticConfigResponse})
+		assertPDU(t, readPDU(t, clientConn), protocol.StaticConfigUpdate)
+
+		createBody := binary.BigEndian.AppendUint32(nil, uint32(len(callSign)))
+		createBody = append(createBody, callSign...)
+		createBody = binary.BigEndian.AppendUint32(createBody, 0)
+		writePDU(t, clientConn, protocol.PDU{ID: protocol.CreateCharacter, Body: createBody})
+		assertPDU(t, readPDU(t, clientConn), protocol.CreateCharacterReply)
+		return clientConn, done
+	}
+
+	cleanupClient := func(callSign string, conn net.Conn, done <-chan error, closed, doneRead *bool) {
+		t.Cleanup(func() {
+			if !*closed {
+				_ = conn.Close()
+				*closed = true
+			}
+			if !*doneRead {
+				select {
+				case err := <-done:
+					*doneRead = true
+					if !errors.Is(err, io.EOF) {
+						t.Errorf("%s server handler error after disconnect = %v, want EOF", callSign, err)
+					}
+				case <-time.After(2 * time.Second):
+					t.Errorf("%s server handler did not stop after disconnect", callSign)
+				}
+			}
+		})
+	}
+	firstConn, firstDone := startClient("AlphaPilot")
+	firstClosed, firstDoneRead := false, false
+	cleanupClient("AlphaPilot", firstConn, firstDone, &firstClosed, &firstDoneRead)
+	secondConn, secondDone := startClient("BetaPilot")
+	secondClosed, secondDoneRead := false, false
+	cleanupClient("BetaPilot", secondConn, secondDone, &secondClosed, &secondDoneRead)
+	alphaRecord := protocol.OccupantUpdateFor("AlphaPilot")
+	betaRecord := protocol.OccupantUpdateFor("BetaPilot")
+
+	joinSolaris := func(conn net.Conn) {
+		t.Helper()
+		body := binary.BigEndian.AppendUint32(nil, state.SolarisPlanetID)
+		body = binary.BigEndian.AppendUint32(body, 0)
+		writePDU(t, conn, protocol.PDU{ID: protocol.JoinPlanet, Body: body})
+	}
+
+	joinSolaris(firstConn)
+	firstSelf := readPDU(t, firstConn)
+	assertPDU(t, firstSelf, protocol.OccupantUpdateID)
+	if !bytes.Equal(firstSelf.Body, alphaRecord.Body) {
+		t.Fatalf("first pilot's initial roster body = %x, want AlphaPilot record", firstSelf.Body)
+	}
+	firstArrival := readPDU(t, firstConn)
+	assertPDU(t, firstArrival, protocol.OccupantArrivedID)
+	if !bytes.Equal(firstArrival.Body, alphaRecord.Body) {
+		t.Fatalf("first pilot arrival body = %x, want AlphaPilot record", firstArrival.Body)
+	}
+
+	firstBroadcast := readPDUsAsync(firstConn, 1)
+	joinSolaris(secondConn)
+	secondSelf := readPDU(t, secondConn)
+	assertPDU(t, secondSelf, protocol.OccupantUpdateID)
+	if !bytes.Equal(secondSelf.Body, betaRecord.Body) {
+		t.Fatalf("second pilot's initial roster body = %x, want BetaPilot record", secondSelf.Body)
+	}
+	secondExisting := readPDU(t, secondConn)
+	assertPDU(t, secondExisting, protocol.OccupantUpdateID)
+	if !bytes.Equal(secondExisting.Body, alphaRecord.Body) {
+		t.Fatalf("second pilot existing-occupant body = %x, want AlphaPilot record", secondExisting.Body)
+	}
+	secondArrival := readPDU(t, secondConn)
+	assertPDU(t, secondArrival, protocol.OccupantArrivedID)
+	if !bytes.Equal(secondArrival.Body, betaRecord.Body) {
+		t.Fatalf("second pilot self arrival body = %x, want BetaPilot record", secondArrival.Body)
+	}
+	readFirstBroadcast := func(label string) protocol.PDU {
+		t.Helper()
+		select {
+		case result, ok := <-firstBroadcast:
+			if !ok {
+				t.Fatalf("first pilot's %s channel closed", label)
+			}
+			if result.err != nil {
+				t.Fatalf("read first pilot's %s: %v", label, result.err)
+			}
+			return result.pdu
+		case <-time.After(2 * time.Second):
+			t.Fatalf("timed out waiting for the first pilot's %s", label)
+			return protocol.PDU{}
+		}
+	}
+	firstNewOccupant := readFirstBroadcast("peer occupant update")
+	assertPDU(t, firstNewOccupant, protocol.OccupantUpdateID)
+	if !bytes.Equal(firstNewOccupant.Body, betaRecord.Body) {
+		t.Fatalf("first pilot broadcast body = %x, want BetaPilot record", firstNewOccupant.Body)
+	}
+	alphaPilot, alphaExists := world.Pilot("AlphaPilot")
+	betaPilot, betaExists := world.Pilot("BetaPilot")
+	if !alphaExists || !betaExists || alphaPilot.Location.PlanetID != state.SolarisPlanetID || betaPilot.Location.PlanetID != state.SolarisPlanetID || alphaPilot.Location.CityID == 0 || alphaPilot.Location.CityID != betaPilot.Location.CityID {
+		t.Fatalf("two-player Solaris locations: AlphaPilot=%+v (exists=%t), BetaPilot=%+v (exists=%t); want the same nonzero city", alphaPilot.Location, alphaExists, betaPilot.Location, betaExists)
+	}
+
+	allMessage := protocol.ChatMessageFor("AlphaPilot", "hello", protocol.ChatChannelAll)
+	allReplies := sendChatAndRead(t, firstConn, allMessage, firstConn, secondConn)
+	firstEcho, secondEcho := allReplies[0], allReplies[1]
+	assertPDU(t, firstEcho, protocol.ChatMessageID)
+	assertPDU(t, secondEcho, protocol.ChatMessageID)
+	wantAllMessage := expectedDisplayedChat(t, allMessage, "AlphaPilot")
+	if !bytes.Equal(firstEcho.Body, wantAllMessage.Body) || !bytes.Equal(secondEcho.Body, wantAllMessage.Body) {
+		t.Fatalf("All chat bodies were not callsign-labelled: sender=%x recipient=%x want=%x", firstEcho.Body, secondEcho.Body, wantAllMessage.Body)
+	}
+	if sender, err := protocol.ChatSenderCallSign(secondEcho); err != nil || sender != "AlphaPilot" {
+		t.Fatalf("All chat sender at second client = %q, %v; want AlphaPilot", sender, err)
+	}
+	if text, err := protocol.ChatMessageText(secondEcho); err != nil || text != "hello" {
+		t.Fatalf("All chat visible text = %q, %v; want unchanged text", text, err)
+	}
+
+	// An attacker-controlled sender field is replaced with the authenticated
+	// session's callsign before the server relays the message.
+	spoofedMessage := protocol.ChatMessageFor("Imposter", "identity-check", protocol.ChatChannelAll)
+	spoofedReplies := sendChatAndRead(t, firstConn, spoofedMessage, firstConn, secondConn)
+	firstEcho, secondEcho = spoofedReplies[0], spoofedReplies[1]
+	if text, err := protocol.ChatMessageText(secondEcho); err != nil || text != "identity-check" {
+		t.Errorf("spoof-corrected text = %q, %v; want unchanged text", text, err)
+	}
+	for label, pdu := range map[string]protocol.PDU{"sender": firstEcho, "recipient": secondEcho} {
+		if sender, err := protocol.ChatSenderCallSign(pdu); err != nil || sender != "AlphaPilot" {
+			t.Errorf("%s received canonical chat sender %q, %v; want AlphaPilot", label, sender, err)
+		}
+	}
+
+	// Check the reverse direction as well; the recipient should see the
+	// second player's own callsign and message text.
+	reply := protocol.ChatMessageFor("BetaPilot", "reply", protocol.ChatChannelAll)
+	replyReplies := sendChatAndRead(t, secondConn, reply, secondConn, firstConn)
+	secondEcho, firstEcho = replyReplies[0], replyReplies[1]
+	if text, err := protocol.ChatMessageText(firstEcho); err != nil || text != "reply" {
+		t.Errorf("reverse chat text = %q, %v; want unchanged text", text, err)
+	}
+	for label, pdu := range map[string]protocol.PDU{"sender": secondEcho, "recipient": firstEcho} {
+		if sender, err := protocol.ChatSenderCallSign(pdu); err != nil || sender != "BetaPilot" {
+			t.Errorf("%s received reverse chat sender %q, %v; want BetaPilot", label, sender, err)
+		}
+	}
+
+	houseMessage := protocol.ChatMessageFor("AlphaPilot", "private-to-house", protocol.ChatChannelHouse)
+	houseReplies := sendChatAndRead(t, firstConn, houseMessage, firstConn)
+	houseEcho := houseReplies[0]
+	assertPDU(t, houseEcho, protocol.ChatMessageID)
+	wantHouseMessage := expectedDisplayedChat(t, houseMessage, "AlphaPilot")
+	if !bytes.Equal(houseEcho.Body, wantHouseMessage.Body) {
+		t.Fatalf("House chat sender echo = %x, want callsign-labelled %x", houseEcho.Body, wantHouseMessage.Body)
+	}
+	if err := secondConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = aries.Read(secondConn)
+	var timeout net.Error
+	if !errors.As(err, &timeout) || !timeout.Timeout() {
+		t.Fatalf("unassigned peer House-chat read error = %v, want timeout without delivery", err)
+	}
+	if err := secondConn.SetReadDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = firstConn.Close()
+	firstClosed = true
+	departure := readPDU(t, secondConn)
+	assertPDU(t, departure, protocol.OccupantDepartedID)
+	if !bytes.Equal(departure.Body, alphaRecord.Body) {
+		t.Fatalf("departing pilot body = %x, want AlphaPilot record", departure.Body)
+	}
+	if err := <-firstDone; !errors.Is(err, io.EOF) {
+		t.Fatalf("first server handler error after disconnect = %v, want EOF", err)
+	}
+	firstDoneRead = true
+
+	_ = secondConn.Close()
+	secondClosed = true
+	if err := <-secondDone; !errors.Is(err, io.EOF) {
+		t.Fatalf("second server handler error after disconnect = %v, want EOF", err)
+	}
+	secondDoneRead = true
+}
+
+func assertFullPlanetKeys(t *testing.T, pdu protocol.PDU) {
+	t.Helper()
+	if len(pdu.Body) < 10 {
+		t.Fatalf("planet-state body has %d bytes, too short", len(pdu.Body))
+	}
+	count := binary.BigEndian.Uint32(pdu.Body[:4])
+	if count != 121 {
+		t.Fatalf("planet-state entry count = %d, want 121", count)
+	}
+	offset := 4
+	for expected := uint32(1); expected <= count; expected++ {
+		if offset+17 > len(pdu.Body) {
+			t.Fatalf("planet-state body ended before entry %d", expected)
+		}
+		key := binary.BigEndian.Uint32(pdu.Body[offset : offset+4])
+		if key != expected {
+			t.Fatalf("planet-state key %d = %d, want %d", expected, key, expected)
+		}
+		offset += 17 // two scalar values, two empty-container counts, one flag
+	}
+	if len(pdu.Body)-offset != 6 {
+		t.Fatalf("planet-state trailer has %d bytes, want sequence and timer (6)", len(pdu.Body)-offset)
+	}
+	if encoded := len(protocol.Encode(pdu)); encoded != 2073 {
+		t.Fatalf("full planet-state PDU size = %d, want 2073", encoded)
+	}
+}
+
+func TestPlanetStateOwnerSnapshotMatchesClientCache(t *testing.T) {
+	world, err := state.DefaultWorld()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdu := planetStateOwnerSnapshot(world, 7)
+	assertFullPlanetKeys(t, pdu)
+	want := map[uint32]uint32{1: 2, 26: 3, 46: 4, 71: 5, 83: 5, 96: 1, 121: 0}
+	for id, owner := range want {
+		offset := 4 + int(id-1)*17 + 4
+		if got := binary.BigEndian.Uint32(pdu.Body[offset : offset+4]); got != owner {
+			t.Errorf("planet %d owner ID = %d, want %d", id, got, owner)
+		}
+	}
+	if got := binary.BigEndian.Uint32(pdu.Body[len(pdu.Body)-6 : len(pdu.Body)-2]); got != 7 {
+		t.Errorf("sequence = %d, want 7", got)
+	}
+}
+
+func writePDU(t *testing.T, conn net.Conn, pdu protocol.PDU) {
+	t.Helper()
+	writeFrame(t, conn, aries.Frame{Type: aries.Data, Payload: protocol.Encode(pdu)})
+}
+
+func writeFrame(t *testing.T, conn net.Conn, frame aries.Frame) {
+	t.Helper()
+	if err := aries.Write(conn, frame); err != nil {
+		t.Fatalf("write Aries frame: %v", err)
+	}
+}
+
+func readFrame(t *testing.T, conn net.Conn) aries.Frame {
+	t.Helper()
+	frame, err := aries.Read(conn)
+	if err != nil {
+		t.Fatalf("read Aries frame: %v", err)
+	}
+	return frame
+}
+
+func readPDU(t *testing.T, conn net.Conn) protocol.PDU {
+	t.Helper()
+	frame := readFrame(t, conn)
+	if frame.Type != aries.Data {
+		t.Fatalf("frame type = %#x, want Aries data %#x", frame.Type, aries.Data)
+	}
+	pdus, err := protocol.Decode(frame.Payload)
+	if err != nil {
+		t.Fatalf("decode game PDU: %v", err)
+	}
+	if len(pdus) != 1 {
+		t.Fatalf("decoded PDU count = %d, want 1", len(pdus))
+	}
+	return pdus[0]
+}
+
+func assertPDU(t *testing.T, pdu protocol.PDU, want uint16) {
+	t.Helper()
+	if pdu.ID != want {
+		t.Fatalf("PDU ID = %#x, want %#x", pdu.ID, want)
+	}
+}
+
+func TestMissionCountdownUsesSharedDeadlineAndCancelsWhenNoPilotReady(t *testing.T) {
+	world, err := state.Open(filepath.Join(t.TempDir(), "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"AlphaPilot", "BetaPilot"} {
+		if _, err := world.CreatePilot(name); err != nil {
+			t.Fatal(err)
+		}
+		if err := world.JoinPlanet(name, state.SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pilot, _ := world.Pilot("AlphaPilot")
+	rooms, err := solarisMissionRooms(world, pilot)
+	if err != nil || len(rooms) == 0 {
+		t.Fatalf("mission rooms: %v", err)
+	}
+	roomID := int(rooms[0].ID.Number)
+	for _, name := range []string{"AlphaPilot", "BetaPilot"} {
+		if err := world.JoinAvailableRoom(name, roomID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Unix(100, 0)
+	assertTimer := func(at time.Time, seconds uint32, kind byte) {
+		t.Helper()
+		p := missionCountdown(world, roomID, at)
+		if p.ID != protocol.CountdownTimerID || len(p.Body) != 5 || binary.BigEndian.Uint32(p.Body[:4]) != seconds || p.Body[4] != kind {
+			t.Fatalf("countdown at %s = %#v, want %d seconds / %d", at, p, seconds, kind)
+		}
+	}
+	assertTimer(now, 0, protocol.CountdownStopped)
+	if err := world.SetReady("AlphaPilot", true, now); err != nil {
+		t.Fatal(err)
+	}
+	assertTimer(now.Add(500*time.Millisecond), 60, protocol.CountdownAutoLaunch)
+	if err := world.SetReady("BetaPilot", true, now.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	assertTimer(now.Add(10*time.Second), 50, protocol.CountdownAutoLaunch)
+	if err := world.SetReady("BetaPilot", false, now.Add(20*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	assertTimer(now.Add(20*time.Second), 40, protocol.CountdownAutoLaunch)
+	if err := world.SetReady("AlphaPilot", false, now.Add(21*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	assertTimer(now.Add(21*time.Second), 0, protocol.CountdownStopped)
+}

@@ -1,0 +1,21 @@
+{
+  "dll_sha256": "a0bd4c43e6940e9738b9bb11a5d1bcb701edc48331256d6f05eadc4f9ab5f20f",
+  "kind": "position",
+  "fields": {
+    "0x30": 1,
+    "0x34": -123,
+    "0x38": 456,
+    "0x3c": 77,
+    "0x40": -11,
+    "0x44": 22,
+    "0x48": -33,
+    "0x4c": 44
+  },
+  "strings": {},
+  "vectors": {},
+  "command_hex": "62224b4b4a254b4b506a21216e4b4b404b4b614b4b2a4b4c22",
+  "server_frame_hex": "1b2162224b4b4a254b4b506a21216e4b4b404b4b614b4b2a4b4c222c543f1b",
+  "native_decode_matches": true,
+  "client_checksum": 170322,
+  "server_checksum": 39058
+}

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Current restoration status for the Multiplayer BattleTech 3025 server emulator.">
+  <title>MPBT 3025 — Restoration Status</title>
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">Welcome, pilot! &nbsp; // &nbsp; ComStar restoration bulletin</div>
+    <h1>Multiplayer BattleTech</h1>
+    <h2>3025 Online Restoration</h2>
+    <div class="report-date">Project status page &nbsp; | &nbsp; Report date: 23 Oct 2026</div>
+  </header>
+  <div class="ticker">*** SOLARIS CITY AND MISSION FLOW RESTORED *** TWO CLIENTS ENTER COMBAT *** NEXT OBJECTIVE: VERIFY HITS, DAMAGE AND RESULTS ***</div>
+  <nav class="site-nav" aria-label="Project pages">
+    <a class="current" href="index.html" aria-current="page">Status</a>
+    <a href="readme.html">README</a>
+    <a href="protocol.html">Protocol</a>
+    <a href="research.html">Research</a>
+    <a href="roadmap.html">Roadmap</a>
+    <a href="project-files.html">Project files</a>
+  </nav>
+  <main>
+    <section class="status-grid" aria-labelledby="estimate-title">
+      <div class="meter">
+        <strong>~40%</strong>
+        <span>Rough feature estimate</span>
+      </div>
+      <div>
+        <div class="section-kicker" id="estimate-title">Overall restoration estimate</div>
+        <div class="bar" aria-label="approximately 40 percent complete">[########------------]</div>
+        <p>The original client reaches a working Solaris city, staging room and two-pilot mission. Both clients enter native combat cockpits; position updates and fire events now relay between pilots. Hits, damage, authoritative combat and match results still need verification. This is a judgment estimate, not a code-size measurement: end-to-end gameplay counts more than server rules that exist only in the prototype model.</p>
+      </div>
+    </section>
+
+    <p class="objective"><strong>Current objective:</strong> finish the multiplayer battle loop: verify a targeted hit, apply damage consistently, and return match results to the client. Solaris city entry, mission staging, countdown launch, cockpit setup and peer position/fire relays are demonstrated with two native clients.</p>
+
+    <section class="panel" aria-labelledby="features-title">
+      <h2 id="features-title">Feature checklist</h2>
+      <p class="section-kicker"><span class="verified">[X]</span> Verified in the game client &nbsp; <span class="partial">[~]</span> Partly implemented or modeled &nbsp; <span class="pending">[ ]</span> Not restored end-to-end</p>
+      <hr>
+      <div class="table-wrap">
+        <table class="feature-table">
+          <thead><tr><th scope="col">Mark</th><th scope="col">Feature</th><th scope="col">Current result</th></tr></thead>
+          <tbody>
+            <tr><td class="verified">[X]</td><td>Local Windows client in Wine</td><td>Launches in an 800×600 window and reaches the map shell.</td></tr>
+            <tr><td class="verified">[X]</td><td>Basic Training</td><td>Training can be entered and exited; the pilot returns to the map.</td></tr>
+            <tr><td class="verified">[X]</td><td>House-colored Inner Sphere map</td><td>Live owner data paints the five House regions in the client.</td></tr>
+            <tr><td class="partial">[~]</td><td>Solaris pilot roster</td><td>Two-client presence and mission entry were demonstrated; room counts, occupants, and Alpha/Beta labels are under regression check after a reported mismatch.</td></tr>
+            <tr><td class="verified">[X]</td><td>Planet All chat</td><td>Two clients exchanged messages in both directions.</td></tr>
+            <tr><td class="partial">[~]</td><td>Server login and pilot records</td><td>Local bootstrap and call-sign records work; historic EA account login is retired and not recreated.</td></tr>
+            <tr><td class="partial">[~]</td><td>House chat</td><td>Routing filter is implemented and covered by Go tests; the changed build still needs live verification.</td></tr>
+            <tr><td class="partial">[~]</td><td>Solaris graduation and city rules</td><td>City entry works. The 1,200-point graduation threshold, House choice, sixteen return cities and practice-room rules are modeled; full progression remains partial.</td></tr>
+            <tr><td class="partial">[~]</td><td>Campaign world</td><td>121 planets, initial owners, sectors, Houses, economy, and result rules are represented; several world values are provisional.</td></tr>
+            <tr><td class="partial">[~]</td><td>Rooms, seats and ready countdown</td><td>Occupied seats and two-pilot launch were demonstrated; room counts and team-label mapping need regression verification.</td></tr>
+            <tr><td class="partial">[~]</td><td>Mech ownership and pilot economy</td><td>Prototype purchase, credits, salary claims, and match-result persistence exist, but are not connected to the original client screens.</td></tr>
+            <tr><td class="verified">[X]</td><td>Solaris city lobby</td><td>Solaris join reaches the city view and staging area in the original client.</td></tr>
+            <tr><td class="partial">[~]</td><td>Planet sectors and staging area</td><td>The Solaris staging list and mission room show live occupants, seats, counts and Alpha/Beta lances; complete planet-sector navigation remains unverified.</td></tr>
+            <tr><td class="verified">[X]</td><td>Mission room and launch</td><td>Both pilots select the COM-4D, ready, pass the preparation barrier and enter the desert arena together.</td></tr>
+            <tr><td class="partial">[~]</td><td>Multiplayer combat</td><td>Two native cockpits run together. Peer positions and fire events relay; movement has been observed and both clients survive shots. Targeted hits, damage, authoritative simulation and results remain unverified.</td></tr>
+            <tr><td class="pending">[ ]</td><td>Live scoring, rank, salary and rewards</td><td>Rules are partly modeled, but no end-to-end client battle awards these values.</td></tr>
+            <tr><td class="pending">[ ]</td><td>Online contacts, Find, messages and reports</td><td>Legacy community services are not restored.</td></tr>
+            <tr><td class="pending">[ ]</td><td>Mech Bay and My Stats screens</td><td>Server-side records are prototypes; these complete client features are not yet verified.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <p>You are visitor number <strong>0003025</strong> &nbsp; | &nbsp; Last updated 23-Oct-2026</p>
+    <p>Not an official EA or BattleTech site · Local project status</p>
+    <p><a href="project-files.html">Project documents and downloads</a></p>
+  </footer>
+</div>
+</body>
+</html>

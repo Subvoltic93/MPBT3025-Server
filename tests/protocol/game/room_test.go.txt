@@ -1,0 +1,64 @@
+package protocol
+
+import (
+	"encoding/binary"
+	"encoding/hex"
+	"testing"
+)
+
+func TestRoomUpdateRecoveredLayout(t *testing.T) {
+	// Fixture follows the native writers at 0x505f90, 0x5018b0, and
+	// 0x51f1f0. In particular, RoomID includes a number AND a host string;
+	// PlayerID is only a string, and PlanetID is only a uint32.
+	const fixture = "00000001" + "01" + // reason; occupant list follows
+		"00000007" + "000000056c6f63616c" + // RoomID 7, host local
+		"00000007536f6c61726973" + "00" + // Solaris; name unlocked
+		"00000000" + // owner PlayerID string
+		"0000000000000000" + // empty stage RoomID
+		"0000000000000000" + "00" + // occupancy/capacity/password
+		"01" + "0000000000000000" + // room type; parent RoomID
+		"0000" + "00000000" + // total occupancy, allow/sanction/min/max
+		"00000000" + "00000079" + // description; numeric planet 121
+		"000100" + "00000000000000" // destroy/visible/combat; seats/levels
+	got := RoomUpdate(1, true, RoomInfo{
+		ID: RoomID{Number: 7, Host: "local"}, Name: "Solaris", Type: 1,
+		PlanetID: 121, Visible: true,
+	})
+	if got.ID != RoomUpdateID || hex.EncodeToString(got.Body) != fixture {
+		t.Fatalf("room update = %#x %x, want 0x3e %s", got.ID, got.Body, fixture)
+	}
+}
+
+func TestCombatConfigurationUpdateUsesHandledLobbyPDU(t *testing.T) {
+	room := RoomID{Number: 1, Host: "local"}
+	seats := []CombatSeat{{SeatLite: SeatLite{Number: 0, Team: 0, CallSign: "Pilot"}, OccupantID: "Pilot", State: 1}}
+	current := CurrentCombat(room, 121, 0, 0, seats)
+	configuration := CombatConfigurationUpdate(room, 121, 0, 0, seats, 7)
+	if current.ID != 0x9e || configuration.ID != CombatConfigurationUpdateID {
+		t.Fatalf("message IDs = %#x and %#x, want 0x9e and 0x8b", current.ID, configuration.ID)
+	}
+	if len(configuration.Body) != len(current.Body)+4 {
+		t.Fatalf("configuration body length %d, want CurrentCombat length %d plus reason", len(configuration.Body), len(current.Body))
+	}
+	if got := binary.BigEndian.Uint32(configuration.Body[len(configuration.Body)-4:]); got != 7 {
+		t.Fatalf("configuration reason = %d, want 7", got)
+	}
+	for i, value := range current.Body {
+		if configuration.Body[i] != value {
+			t.Fatalf("configuration CombatInfo differs from CurrentCombat at byte %d", i)
+		}
+	}
+}
+
+func TestCombatInfoNativePlanetMapAndClimateOffsets(t *testing.T) {
+	// Native writer 0x514ff0 serializes +1c, +24, +2c, +34, then BYTE +38.
+	// Formatter 0x515144 names +28 "m_planet", +30 "m_map", and +38
+	// "m_climate". Using consecutive u32 planet/map/climate loses PlanetID.
+	p := CurrentCombat(RoomID{Number: 1, Host: "local"}, 121, 0x01020304, 2, nil)
+	const want = "00000001000000056c6f63616c" +
+		"00000000" + "00000079" + "01020304" + "00000000" +
+		"02" + "00" + "01" + "00000000"
+	if got := hex.EncodeToString(p.Body); got != want {
+		t.Fatalf("CombatInfo = %s, want %s", got, want)
+	}
+}

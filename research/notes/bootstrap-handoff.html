@@ -1,0 +1,1465 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local bootstrap implementation handoff — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>Local bootstrap implementation handoff</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="../../index.html">Status</a>
+<a href="../../readme.html">README</a>
+<a href="../../protocol.html">Protocol</a>
+<a href="../../research.html">Research</a>
+<a href="../../roadmap.html">Roadmap</a>
+<a href="../../project-files.html" class="current" aria-current="page">Project files</a></nav>
+  <main><article class="document"><h1>Local bootstrap implementation handoff</h1>
+<p>Historical local paths in this document are relative to the original workspace root. Original client assets, client-derived research, and visual evidence remain in the separate workspace-root <code>client/</code> directory and are not included in this server project.</p>
+<p>Work resumed on 2026-10-19. Original client assets are untouched; experiments use the project Wine copy.</p>
+<h2>Current state</h2>
+<p><strong>Resume here:</strong> <a href="solaris-session-2026-10-21.html">Solaris session handoff, 2026-10-21</a>
+contains the latest live-session checkpoint and historical client evidence.
+The current project layout and active development notes are in the root README
+and project status page.</p>
+<p><strong>Latest correction (2026-10-21, resumed session):</strong> <code>PlayerID</code> is a string,
+not a numeric uint32. The prior nonzero-ID trials were malformed string
+encodings; they do not establish an EA authentication requirement. Correct
+string IDs and removal of peer <code>0x3c</code> updates produced a live map roster with
+both BetaPilot and Subvoltic (count 2). Screenshot:
+<code>client/.runtime/captures/string-id-b-two-players.png</code>; trace:
+<code>runtime/traces/string-player-id/session-1792608043213374200.log</code>.
+The recovered <code>0x3e UPDATE_ROOM</code> with lobby type 1 also moved the live client
+into <strong>Staging Area / Missions on Solaris</strong>, with <strong>You are on Solaris</strong> in
+Communications. Capture: <code>client/.runtime/captures/room-update-type1-a-live.png</code>.
+See the latest recovery section at the end for addresses and validation.
+Older empty-ID and unknown-transition conclusions below are superseded.</p>
+<p>This handoff preserves dated implementation history. Source paths and
+embedded seed claims in older entries describe that checkpoint; the
+current source uses <code>src/state</code>, the optional seed loader is in <code>data/</code>,
+and test sources and protocol fixtures are grouped under <code>tests/</code> and
+<code>data/test-fixtures/</code>. The current manual and SDS copies are under
+<code>reference/</code>; client assets, extracted cache data, and extracted SDS text
+remain outside the project.</p>
+<p>The broader gameplay state model and its evidence are summarized in
+<a href="world-state-research.html"><code>world-state-research.md</code></a>. That research confirms
+that the client's map, sector selection, staging rooms, mission seats, pilot
+progression, and planetary control all depend on shared server state.</p>
+<h2>Prototype game-state implementation</h2>
+<p><code>src/state</code> now separates pilot/campaign rules from wire messages.
+It persists a world JSON file containing 121 planets, five Houses, pilots,
+Solaris's 16 city lobbies, strategic sectors, mission rooms, eight-seat lances,
+ready countdowns, mech ownership, C-bills, salary claims, and idempotent match
+results. Cadets start on Solaris with a Commando-4D; completed Solaris matches
+award prototype rank points, and 1,200 points unlock House selection. Campaign
+battle results can shift planet control. This is the foundation for all game
+surfaces described in the manual, not yet a claim that their wire handlers or
+the combat simulation are complete.</p>
+<p>The planet names come from the preserved client cache. Ownership is split
+evenly among Houses and neighbor links form a ring only to give the prototype
+map and eligibility rules usable defaults. Sector names, room templates,
+scoring, mech prices, and salary multipliers are also provisional. These
+values can be edited in <code>runtime/world.json</code> and will be reset when that file
+is deleted. Research on the separate MPBT: Solaris emulator supports the
+service boundaries (accounts, lobby/world travel, rooms, combat); its
+<code>MPBTWIN.EXE</code> inner protocol is unrelated to BT3025's PDU IDs.</p>
+<p>The Go server completes Aries login and sends a correctly framed HOST_ONLINE greeting. In an earlier run, <strong>the client reached the Inner Sphere map shell, loaded Basic Training, and returned to the map</strong> after an experimental zero-result ID0x88 reply to its ID0x87 create-character request. This confirms that reply was sufficient to reach the map shell in that run; it does not establish that the server persisted a character or that the reply is the authentic success exchange. The map shell is not the same screen as a planet's staging-area lobby.</p>
+<p>The earlier failed join experiment is <code>runtime/traces/session-1792434813246446403.log</code>. The client replayed its saved <code>Subvoltic</code> create-character request, then sent ID0x91 for Solaris (planet 121). The server answered with ID0x90 and eight zero bytes; the client then displayed a Microsoft Visual C++ Runtime Error (“abnormal program termination”). A later vtable and diagnostic-string inspection corrected the old opcode mapping: ID0x90 is <code>COMBAT_SUMMARY_PDU</code>, ID0x91 is <code>JOIN_PLANET_PDU</code>, and ID0x92 is <code>JOIN_PLANET_FAILED_PDU</code>. The crash followed a malformed combat-summary body, not a valid join-failure response. We have not tested the correctly typed ID0x92 message. In the subsequent pre-change run, <code>runtime/traces/session-1792434956177851188.log</code>, the client replayed the saved call sign and Solaris join automatically. The server ignored ID0x91 and the client stayed on the map without crashing. It also sent ID0xa7 planet-state requests, which the server ignored. The earlier map capture at <code>client/.runtime/client.png</code> showed black faction regions after the empty ID0xa8 update. The user reports the top controls were gray and unavailable.</p>
+<p>The previous full-bootstrap trace is <code>runtime/traces/session-1792431406491653529.log</code> (latest activity 10:48 local). Player ID0x3c has a 43-byte body. Profile ID0x3d now has a 101-byte body (107 bytes including its PDU header), and the client consumed it without a length error. The first experimental profile body had omitted the <code>uint32</code> at profile offset +0x94, which the serializer emits after +0xbc; adding it fixed the packet length. The same trace shows the client's 0xa4 sequence-0 acknowledgement, the synchronized 0x86 update, and a later heartbeat.</p>
+<p>WineDbg confirmed the inbound 0x3c PDU wraps a <code>BTPlayerInfo</code> object and that its body passes the exact-length check. The 0x3d PDU wraps profile data; after the +0x94 field was added, the next decoder breakpoint was reached without hitting the mismatch branch at 0x511a43. Earlier failed profile traces (<code>session-1792430467711164407.log</code> and <code>session-1792430567672060019.log</code>) are retained as history. A player-only run (<code>session-1792430969172627005.log</code>) stayed on the upload screen, confirming that profile data was also required.</p>
+<p>The call-sign form's OK button sends ID0x87 with body <code>00000009 537562766f6c746963 00000000</code> (length-prefixed <code>Subvoltic</code>, followed by an empty counted list). The client serializer at <code>BT3025.exe:0x52d720</code> identifies ID0x87 as <code>CREATE_CHARACTER_PDU</code>; its fields match the trace. Before the server handled this request, it logged and ignored ID0x87, leaving the form open while the client retried.</p>
+<p>The client has an explicit ID0x88 receive path at <code>BT3025.exe:0x40d338</code>. It branches on the first result field: zero clears the pending create-character form state, while nonzero enters an error-display path. The <code>CREATE_CHARACTER_FAILED_PDU</code> base serializer at <code>0x511e10</code> writes that uint32 result followed by a length-prefixed string. The Go server decodes ID0x87 and sends ID0x88 with zero result and an empty string (eight zero body bytes). In the latest run, this cleared the call-sign form and the client reached the Inner Sphere map shell. Treat this as a working bootstrap experiment, not proof of the authentic success message or durable character creation.</p>
+<p>For that experiment, the client and server were restarted. The session trace is <code>runtime/traces/session-1792432410938502234.log</code>; login, player/profile updates, settings, room list, and config acknowledgement replayed. It records the ID0x87 call-sign request, the server's ID0x88 zero-result reply, and then ID0xa7 planet-state requests. At map-shell entry, the client showed the Inner Sphere map and Training panel. The user completed Basic Training and returned to the map shell; the earlier capture shows Advanced Piloting selected.</p>
+<p>The client sends ID0xa7 with a four-byte zero body alongside empty ID0xa3 heartbeats. Corrected vtable/class-prefix inspection identifies ID0xa7 as <code>REQUEST_PLANET_STATES_PDU</code>, not <code>REQUEST_LOBBY_ROOMS_PDU</code>: its serializer writes one uint32 planet ID, and zero is the observed request value. The neighboring ID0xa8 class is <code>PLANET_STATE_LIST_UPDATE_PDU</code>; its serializer at <code>BT3025.exe:0x5239d0</code> writes a counted container, a uint32 sequence number, and a uint16 seconds-until-shift. Its decoder is at <code>0x523a10</code>; <code>0x523a50</code> is the diagnostic field formatter. In the 11:29 experiment, the Go server returned an empty 10-byte ID0xa8 body. The client accepted the packet, but the map's faction-colored territories rendered black afterward. Treat the all-zero update as an incomplete placeholder that changes the map display; do not mistake it for valid planet-state data.</p>
+<h3>Latest VCR-state experiment (12:23 local)</h3>
+<p>The trace <code>runtime/traces/session-1792437754057918789.log</code> shows the client sending ID0x87 for <code>Subvoltic</code>, receiving the experimental zero-result ID0x88 completion, and then requesting planet state with ID0xa7 for ID 0. With <code>-planet-vcr</code> enabled, the server sent the 28,114-byte VCR-derived ID0xa8 candidate in two ID0x47 split-buffer frames (16,384 and 11,752 bytes). Immediately afterward the client displayed a Microsoft Visual C++ Runtime Library error: “abnormal program termination.” There was no later client packet in that trace, and the crash happened before the user clicked <strong>Go To Planet</strong>.</p>
+<p>This ties the failed run to the new ID0xa8 delivery, but does not distinguish a split-buffer receive/reassembly problem from an invalid ID0xa8 record layout or values. The VCR table and network state-list element type are still unproven matches. Keep <code>-planet-vcr</code> disabled for normal client runs. The clean restart trace is <code>runtime/traces/session-1792437926599845347.log</code>; it contains the saved ID0x87 call-sign request for <code>Subvoltic</code>, then ID0x91 for Solaris and repeated ID0xa7 requests, with no ID0xa8 response. The screenshot taken before the user repeated the progression showed the map under a blank call-sign pane. The client stayed open without the large update.</p>
+<h3>Single-record planet-state trial (14:06 local)</h3>
+<p>The server restarted with <code>-planet-vcr-solaris</code>, which sends one 202-byte ID0xa8 PDU containing count 1, the 186-byte Solaris VCR record, sequence 0, and timer 0. Trace <code>session-1792444010046251716.log</code> shows the client replaying <code>Subvoltic</code> creation, receiving the zero-result ID0x88 completion, then receiving session-specific ID0x3c/0x3d pilot/profile records. It requested planet state with ID0xa7 and received the compact ID0xa8 candidate. The client process was still alive when the trace was first reviewed, but the user later reported that the menus became visually corrupted and the game crashed after advancing from the call-sign screen. The run therefore failed; it does not establish that the compact record was accepted.</p>
+<p>There are two new variables in that run: the session-specific ID0x3c/0x3d records and the compact ID0xa8 record. Neither has been isolated as the crash cause. The next run removes both from the live path: the server no longer emits duplicate session-specific pilot/profile records after ID0x88, and it is started without either planet-state experiment flag. The persistence model and stored call sign remain enabled. Once this baseline is stable, reintroduce one message at a time.</p>
+<h3>Current planet-entry attempt (12:25–12:38 local)</h3>
+<p>The user entered <code>Subvoltic</code>, completed Basic Training, exited training, selected Solaris, and clicked <strong>Go To Planet</strong>. In the current trace, the server sends the experimental zero-result ID0x88 create-character completion; the client then sends ID0x91 with body <code>00000079 00000000</code> (Solaris ID 121 and an empty string). The server logs the join request but has no validated success reply. The client continues polling with ID0xa7 for planet ID 0 and sending ID0xa3 heartbeats. No ID0xad lobby-room request or ID0xa8 planet-state update appears.</p>
+<p>The screenshot captured at 12:29:45 (<code>client/.runtime/client.png</code>) still has the <strong>Inner Sphere Map: 3025 AD</strong> title and the selected Solaris card. <strong>Go To Planet</strong> remains active; the lower <strong>Communications</strong> and <strong>MechWarriors on Planet</strong> panels are empty. The user reports this is the only available server-related path. The Player's Guide says <strong>Go To Planet</strong> should show strategic sectors and their 'Mech occupancy before the pilot can choose <strong>Go To Sector</strong>. The screen therefore has not visibly reached the sector list or staging-area lobby. We cannot infer from the map screenshot whether the client applied any part of the join request; the trace only establishes that it sent one and received no join reply.</p>
+<p>This is a stronger current blocker than the earlier blank-call-sign screenshot: the client now has a call sign, has completed Basic Training, and can issue the Solaris join request, but the server still lacks a proven join transition and valid planet/sector state. Do not send the experimental ID0xa8 VCR candidate again; its previous live delivery terminated the client, and its record layout remains unknown. Continue by decoding the A8 element type and identifying the server message that populates the strategic-sector view before another live trial.</p>
+<h3>Clean baseline after the reported crash (14:10 local)</h3>
+<p>The user reported that the previous run's menus became distorted and the client crashed after advancing from call-sign creation. The previous trace contains both additional session-specific ID0x3c/0x3d records and the compact experimental ID0xa8 update, so it does not identify which caused the failure. I removed the post-creation 0x3c/0x3d sends and restarted without either VCR planet-state flag.</p>
+<p>In the resulting trace, <code>session-1792444272200756933.log</code>, the client completed the same call-sign flow, sent its ID0x91 Solaris join request, and continued polling with ID0xa7. The server sent neither a duplicate pilot/profile record nor ID0xa8. The user clicked <strong>Go To Planet</strong>; the screen stayed on the Inner Sphere map with Solaris selected and the lower planet panels empty. The client remained stable, but did not enter the strategic-sector list. This shows the crash does not reproduce in the no-experiment baseline. It still does not distinguish the two experimental messages as the cause, and the join remains unhandled at the UI level.</p>
+<h3>Isolated Solaris-state trial (14:17 local)</h3>
+<p>The next trial enabled only <code>-planet-vcr-solaris</code>; it did not send the later
+session-specific ID0x3c/0x3d updates. Trace
+<code>session-1792444595134542990.log</code> shows startup, an ID0xa7 request for planet
+0, and the server's 202-byte ID0xa8 candidate. No later client PDU appears.
+The user saw the Microsoft Visual C++ Runtime Library “abnormal program
+termination” dialog while the map and blank call-sign pane were visible. The
+client run therefore fails with the single-record update by itself, before
+call-sign creation or the ID0x91 join request.</p>
+<p>The VCR bytes explain why this candidate is invalid as a direct network record.
+The Solaris cache entry starts with ID 121, length-prefixed <code>Solaris</code>, and type
+byte 2; the remaining string lengths (<code>7</code> and <code>133</code>) are stored together before
+the strings. The <code>PlanetInfo</code> network serializer at <code>BT3025.exe:0x515ca0</code>
+interleaves each string length with its text. In the candidate record, the
+network decoder would read <code>00 00 00 85 53 6f 6c</code> as the first post-type string
+instead of <code>Solaris</code>. The ID0xa8 element type remains unknown, but this rules
+out sending the VCR record bytes unchanged. Both <code>-planet-vcr</code> flags stay off.</p>
+<p>The Player's Guide v1.4.5 page 8 says a pilot who completes Pilot Training and
+clicks <strong>Go To Planet</strong> appears in a Solaris city lobby. Pages 13–15 describe
+the later graduated-pilot flow through planet sectors and their staging areas.
+The user's current pilot is still a cadet, so the immediate acceptance target
+is the Solaris city lobby, not House selection or the Inner Sphere sector
+list.</p>
+<p>The next no-A8 client run restores the real call sign to the client after
+creation: the server will resend ID0x3c/0x3d updates using the persisted call
+sign instead of leaving the startup <code>Local Pilot</code> placeholders in place. This
+trial will also determine whether those profile refreshes are safe without the
+bad ID0xa8 update.</p>
+<h3>World-state and disabled-control findings</h3>
+<p>The user's reading is directionally right: normal Inner Sphere play needs shared faction and territory state, not only a lobby handshake. The manual describes five Houses contesting 120 territories. Each planet has an owner plus five House control percentages; ownership and adjacency determine which planets can be attacked or defended, and battle results shift those percentages. The client map expects these live values: a structurally valid but empty ID0xa8 update turned its territory fills black.</p>
+<p>There are two separate issues. First, the previous server ignored <code>JOIN_PLANET</code> (ID0x91). The malformed ID0x90 response was <code>COMBAT_SUMMARY</code>, not the typed failure message. A later experiment sent an empty ID0x97 ready-room list after ID0x91; the client stayed on the map and did not request lobby rooms (ID0xad), so the server no longer sends that unsupported early reply. The ID0x97 list remains available only in response to ID0xad. Second, the original local pilot/profile were placeholders with no House or earned rank. The new game package persists the call sign and campaign state, but still sends a placeholder at initial login until the client supplies its character record. The manual says new pilots train and fight on Solaris, need 1,200 rank points for the Graduation Medal, and only then choose a House; it explicitly says Find Planet is unavailable before graduation and that some new-pilot actions are grayed out. Basic Training completion is not the same as Solaris graduation.</p>
+<p>Local files contain static content but have not yielded authoritative live ownership data:</p>
+<ul>
+<li><code>client/MPBT3025andGILS/MPBT3025/BT3025.vcr</code> is 61,107 bytes. At file offset <code>0x3848</code> it contains a big-endian count of 121, followed by planet records with IDs 1–121 (Solaris is 121); House records follow the planet table. The records include readable planet names and descriptions plus additional binary fields. This serialized client cache is a promising source for the <code>PlanetInfo</code> layout and default static values, but it is not a known live server snapshot or packet capture. The additional fields and whether they include usable owner/control values are not decoded yet.</li>
+<li><code>client/MPBT3025andGILS/MPBT3025/Data/InnerSphere.k3s</code> is a ZIP archive of map art: numbered planet icons, <code>H001</code>–<code>H120</code>/<code>h121</code> territory images, and <code>is_outlines.tga</code>. These assets explain the 120-territory map visuals, but the archive does not itself supply live owners or control percentages.</li>
+<li><code>PlanetInfo</code> has a serializer at <code>0x515ca0</code>, decoder at <code>0x515d60</code>, and field formatter at <code>0x515e30</code>; <code>HouseInfo</code> has a formatter around <code>0x518910</code>. The ID0xa8 update serializer/decoder at <code>0x5239d0</code>/<code>0x523a10</code> process a generic state collection, but no direct reference ties that collection's elements to <code>PlanetInfo</code>. The VCR table and A8 network element type therefore remain an unproven match, and the live owner/control values are still unknown. Do not send a guessed list.</li>
+</ul>
+<p>The 11:29 experiment reached the map and exercised ID0x91. The server sent ID0x97 with an empty list, but the client remained on the Inner Sphere map and did not send ID0xad. The user reported that territory details appeared on hover; this confirms map-shell interaction, not that the planet's sector lobby loaded. A fuller campaign server will also need persistent Houses, planet ownership/control, rooms and occupancy, pilot progression, and battle-result updates.</p>
+<p>The client has a split-message format for oversized game PDUs. Factory case 0x47 at <code>BT3025.exe:0x4f69a3</code> constructs the class whose serializer at <code>0x5027a0</code> and decoder at <code>0x502740</code> handle a one-byte <code>m_lastInSet</code>, a uint32 <code>m_dataLen</code>, and raw bytes. The Go server wraps an oversized PDU's complete encoded bytes (including its six-byte header) into ID0x47 fragments, marks only the final fragment, and sends each fragment in its own Aries data frame no larger than the 16 KB HOST_ONLINE buffer. These routines confirm the fragment fields, but the client's higher-level reassembly and dispatch behavior remain unverified.</p>
+<p>The opt-in <code>-planet-vcr</code> candidate is no longer blocked by the size check. It can be sent through the inferred split-message wrapper when the client requests planet ID 0, but the first live attempt terminated the client immediately after the two fragments arrived. The result does not establish whether the fault is in split-buffer handling or in the guessed ID0xa8 payload. Keep this option off until the receive path and list record layout are verified independently.</p>
+<p>After Basic Training, the user selected Solaris and clicked <strong>Go To Planet</strong>. The trace <code>runtime/traces/session-1792432410938502234.log</code> records ID0x91 with body <code>00000079 00000000</code>; the old running server sent no reply and the client stayed on the map. The client class metadata confirms ID0x91 is <code>JOIN_PLANET_PDU</code> (class-ID prefix at <code>BT3025.exe:0x59426c</code>, serializer at <code>0x52a700</code>), ID0x92 is <code>JOIN_PLANET_FAILED_PDU</code> (prefix at <code>0x594234</code>), and ID0x90 is <code>COMBAT_SUMMARY_PDU</code> (prefix at <code>0x5942a4</code>). The request body is a uint32 planet ID followed by a length-prefixed string; Solaris is ID 121 and the string is empty. The failed live experiment sent eight zero bytes as ID0x90, then crashed. That was the wrong class and wrong body for a join failure; the exact failure response has not been tested. An ID0x91 echo also left the client on the map. The successful join response sequence remains unknown.</p>
+<p>The confirmed message mapping is <code>REQUEST_PLANET_STATES_PDU</code> 0xa7 (constructor at <code>0x523f70</code>, uint32 serializer at <code>0x523fc0</code>), <code>PLANET_STATE_LIST_UPDATE_PDU</code> 0xa8 (collection serializer/decoder at <code>0x5239d0</code>/<code>0x523a10</code>), and <code>REQUEST_LOBBY_ROOMS_PDU</code> 0xad (class metadata at <code>0x593ccc</code>). The 0xad serializer at <code>0x521f80</code> labels its only field <code>m_planetID</code>, so its request body is a planet ID, not a counted list. The decoder now returns that ID and the server can answer it with an empty ID0x97 <code>READY_ROOM_LIST</code>. No trace to date contains ID0xad. The empty room list therefore has not been shown to be accepted in a live lobby flow, and it contains no sector data. Correct class metadata maps <code>JOIN_PLANET_FAILED_PDU</code> to 0x92; 0x90 is <code>COMBAT_SUMMARY_PDU</code>.</p>
+<p>After the user selected Basic Training, the client displayed the 3D training scene with the tutorial text “This is your radio. It's where you communicate with friends and foes alike. The Tab key will begin messages, and the Enter key will send them. Press Space to continue.” The screenshot was captured at 11:00:05 local time; the server trace was last modified at 10:59:18 and contains no PDU after the lobby requests and heartbeat in that interval. The user completed the lesson and the client returned to the Inner Sphere map shell. No training-specific network exchange was observed, though later mission actions may still use the network.</p>
+<p>The user reported very low frame rate during Basic Training. The Wine process maps <code>wined3d.dll</code> and <code>opengl32.dll</code>, and also has Intel <code>i915.gem</code> buffers; <code>glxinfo -B</code> reports accelerated OpenGL on Intel HD Graphics 520 (Skylake GT2). This points to Wine's Direct3D-to-OpenGL path on the integrated GPU, not an obvious CPU-only renderer. The host is an Intel Core i5-6300U with two cores/four threads. At 11:08 local, memory was tight (635 MiB available and all 511 MiB of swap allocated), the load average was about 3.9 on four logical CPUs, and short samples showed a high run queue. Host contention and the older integrated GPU can both contribute; the short swap sample did not show sustained swap traffic, so the exact bottleneck is not proven. The game is already in its default 800x600 window. The manual's Video Options recommend Detail=Low for maximum performance and allow reducing Shadow Complexity, Object Complexity, and Terrain Detail. It also documents <code>O</code> as the in-combat frame-rate display toggle.</p>
+<p>The 11:29 experiment showed that ID0xa8 with an empty state list blanks the map territories, so the default server omits a placeholder update. Trace <code>runtime/traces/session-1792436091041633956.log</code> records the client sending ID0x91 with Solaris ID 121 and an empty string; the server replied with an empty ID0x97 list. The client then sent more ID0xa7 requests and heartbeats but no ID0xad. The ID0x97-after-join experiment did not advance the UI and has been removed from source. <code>internal/protocol/planet_seed.go</code> extracts the 121-entry planet table from the hash-checked VCR and appends the ID0xa8 sequence/timer fields. The 28,114-byte candidate was sent as two ordered ID0x47 frames; as documented above, the client terminated immediately afterward. The trace and screenshot are evidence of failure, not successful reassembly or valid state data. In the current no-flag run, the trace records the user's repeat of the call-sign/training/planet path: ID0x87, ID0x91 for Solaris, and repeated ID0xa7 polls, but no ID0xa8 update. The captured UI is the map with Solaris selected, <strong>Go To Planet</strong> active, and empty communications and planet-pilot panels; no sector list or staging-area room list has appeared.</p>
+<p>Earlier Go unit-test runs passed transport fragmentation/coalescing, length limits, truncated frames, exact greeting bytes, multiple game PDUs, and invalid game lengths. These tests establish framing correctness, not successful lobby startup. Use <code>./scripts/test.sh</code> from the current project root to run the reorganized suite.</p>
+<h2>Code and running</h2>
+<ul>
+<li><code>src/server/main.go</code>: localhost TCP service, trace capture, startup dispatch.</li>
+<li><code>src/protocol/aries/frame.go</code>: transport framing.</li>
+<li><code>src/protocol/game/pdu.go</code>: game framing, greeting, startup replies, and experimental configuration sync.</li>
+<li><code>src/protocol/game/planet_seed.go</code>: opt-in extraction of candidate planet-state records from the exact preserved VCR build.</li>
+<li><code>src/protocol/game/pilot.go</code>: disposable local player and profile builders using recovered serializer order. Pilot identity and profile values are placeholders.</li>
+<li><code>client/research/client-inventory.json</code>: client hashes and named message inventory.</li>
+<li><code>client/research/raw/</code>: objdump/strings outputs used for address references.</li>
+</ul>
+<p>Requires Go 1.24 or later, with no third-party Go dependencies. From the current project root, run checks and start the server with:</p>
+<pre><code class="language-bash">./scripts/test.sh
+go run ./src/cmd/server
+</code></pre>
+<p>The full VCR-derived planet update is opt-in and uses inferred split-buffer
+framing. A live attempt terminated the client after delivery, so leave this
+flag off during normal client testing. A smaller one-record Solaris variant
+avoids fragmentation but still uses an unverified cache record layout. Both
+are experiments, not authoritative campaign state:</p>
+<pre><code class="language-bash">go run ./cmd/server -planet-vcr ../client/MPBT3025andGILS/MPBT3025/BT3025.vcr
+</code></pre>
+<p>To send only the single Solaris cache record while isolating its ID0xa8 element
+layout, use:</p>
+<pre><code class="language-bash">go run ./cmd/server -planet-vcr-solaris ../client/MPBT3025andGILS/MPBT3025/BT3025.vcr
+</code></pre>
+<p>While the server is running, use another terminal at the repository root to start the client:</p>
+<pre><code class="language-bash">./client/scripts/launch.sh game aol:127.0.0.1:15000:key:local-dev
+</code></pre>
+<p>Stop the client from the repository root with <code>./client/scripts/stop-wine.sh</code>.</p>
+<p>Client startup takes approximately 20–35 seconds before connecting on this system. Server defaults to 127.0.0.1:15000; <code>-listen</code> and <code>-trace-dir</code> are configurable. Traces include raw login payloads, so use disposable local keys. Current server accepts any login, has no real authentication or account persistence, and has no gameplay. Its empty room-list reply is experimental. Keep development local. No Git repository is initialized in this directory.</p>
+<h2>Verified protocol</h2>
+<p>Aries header: three little-endian uint32 fields: type, tag, payload length (12 bytes). Server first sends type 0x16 with empty payload. Client answers type 0x15 with login data. Game data uses type 0. In the local login, key length is uint16 LE at offset 322, followed by key at 324 and a terminating NUL; other fields are not fully parsed.</p>
+<p>Game PDU header: big-endian uint16 ID followed by uint32 <strong>total</strong> length including the 6-byte header. Multiple PDUs can share an Aries frame. Cross-frame game-PDU reassembly is not implemented.</p>
+<p>Verified HOST_ONLINE (ID 29) complete wire bytes:</p>
+<pre><code>001d0000000e0000010502024000
+</code></pre>
+<p>Body: reserved-word count uint16=0, four version bytes 1.5.2.2, buffer size uint16=16384. An earlier uint32 reserved-word count caused a client deserialize exception; the current uint16 greeting works.</p>
+<p>Client startup response:</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Body hex</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0x09</td>
+<td>010502020000000080000000f7465db7</td>
+</tr>
+<tr>
+<td>0x33</td>
+<td>0000</td>
+</tr>
+<tr>
+<td>0x37</td>
+<td>00000000</td>
+</tr>
+<tr>
+<td>0x35</td>
+<td>00000000</td>
+</tr>
+<tr>
+<td>0x31</td>
+<td>00000000</td>
+</tr>
+<tr>
+<td>0x43</td>
+<td>00000000</td>
+</tr>
+<tr>
+<td>0x26 (LIST_ROOMS)</td>
+<td>empty</td>
+</tr>
+</tbody>
+</table>
+<p>Heartbeat 0xa3 has an empty body. Signed game int32 values use unsigned bias/XOR 0x80000000; strings use uint32 BE byte length followed by bytes, no NUL.</p>
+<h2>Reverse-engineering anchors</h2>
+<p>Addresses are preferred virtual addresses in the inventoried binaries, not file offsets.</p>
+<ul>
+<li><code>aries.dll</code> 0x10001491 handles login request; 0x10001545 constructs login response.</li>
+<li><code>BT3025.exe</code> game encoder 0x511960; decoder 0x5119d0; exact consumed-length check 0x511a43 throws via 0x530d7d.</li>
+<li>HOST_ONLINE encoder 0x50c260; reserved-word list 0x4f99b0; host parameters 0x503520.</li>
+<li>Primitive writers: bool 0x4f73e0, u8 0x4f7400, u16 0x4f7460, u32 0x4f74c0, biased signed32 0x4f74e0, string 0x4f7710/0x4f7620.</li>
+<li>Player update ID0x3c: data serializers at 0x4fce40 and 0x51b690; handler at 0x4df150 sets connection flag +0x1f8. The base emits a counted container, then a byte and bool; the derived serializer emits a string, counted container, byte, three uint32s, bool, and a string. The disposable fixture uses empty containers and zero-valued fields. Live WineDbg inspection reached the <code>BTPlayerInfo</code> decoder and passed the exact-length check.</li>
+<li>Profile update ID0x3d: data serializers at 0x4fd800 and 0x51c350; handler at 0x4df0e0 sets connection flag +0x1f9. The base writes six counted containers, two strings, two bools, one byte, and two uint32s. The derived serializer writes five counted containers, one string, two bytes, one bool, and five uint32s; the <code>+0x94</code> uint32 is serialized after <code>+0xbc</code>. The first body omitted that word and failed the client's exact-length check. The current 101-byte body passes the live decoder and advances the UI beyond the upload screen. Its profile and mech values are still placeholders.</li>
+<li>Host-online handler 0x4df380 sends startup requests including LIST_ROOMS.</li>
+<li>Static configuration ID0x86 encoder 0x52e210, decoder 0x52e270, handler 0x4de4a0. Body: bool isSynched, five counted tables (each uint32 count), sequence byte, total 22 bytes when empty. The previous “four tables + revision” interpretation was wrong: serializer inspection shows five table writers and no revision field. Empty unsynchronized sequence-0 config receives 0xa4 sequence 0; a final synchronized update follows. This exchange is accepted, but does not yet advance the UI.</li>
+<li>Config handler with isSynched=false merges table deltas; sequence 1 first clears cached tables. It sends response ID0xa4 containing sequence, then sets flag +0x1e5. isSynched=true can emit event 0x80 and release deferred profile/qualification events when +0x1e5 is set. Complete exchange remains unproven; do not clear tables without supplying replacements.</li>
+<li><code>BT3025.vcr</code> is persisted serialized state, not an established packet recording. Encode/decode 0x4dd750/0x4dd940; base serialization 0x4f1b40. Contains configuration tables that may help bootstrap. No extractor implemented.</li>
+</ul>
+<p><code>client/.runtime/dump_code.py</code> is a local targeted objdump helper, accepting hex start[:size]. <code>client/.runtime/capture.py</code> captures the Wine desktop to <code>client/.runtime/client.png</code>. Both are ignored experimental helpers. Avoid naming a helper <code>dis.py</code>, which shadows Python's stdlib module.</p>
+<h2>Recommended continuation</h2>
+<ol>
+<li>Treat the first milestone as “map shell reached,” not “planet lobby entered.” Keep the trace as evidence and avoid describing this as persistent character creation.</li>
+<li>Recover the actual response sequence after the ID0x91 Solaris request so the client enters a Solaris city lobby. The request's second field is <code>m_password</code> (empty in the observed request). The zero-result ID0x92 trial displayed a failure dialog, and the inventory contains no separately named join-success PDU. Follow the client’s world-session/redirect path and identify the state it needs after the join.</li>
+<li>Keep VCR-derived ID0xa8 state disabled. Its element wire shape and first-field lookup-key role are known, but state fields and valid starting control values remain unresolved. The 11:25 run sent the 121-entry numeric key-presence probe; the client stayed on the map and no owner projection was established. See the latest trace and screenshot below. Describe keys numerically until their planet-ID meaning is proven. The manual's world rules remain acceptance criteria, not a substitute for the missing state data.</li>
+<li>The current <code>&quot;Local Pilot&quot;</code>, no-House profile, and empty config deltas are placeholders. <code>BT3025.vcr</code> contains readable local names and descriptions but is not an established packet capture or authoritative server state; no extractor exists yet.</li>
+<li>Preserve a trace and screenshot after each server change. The latest no-reply join trace is <code>runtime/traces/session-1792520472103837304.log</code>, with the after-wait capture <code>client/.runtime/captures/solaris-join-20261020-112510-after-wait.png</code>. The earlier October 20 startup sessions ended before the client sent ID0x91, so they do not replace this map-only evidence.</li>
+</ol>
+<p>Earlier architectural research is in <code>research/notes/server-emulator-research.md</code>. Go remains the agreed implementation language: standard-library networking, explicit message types, small packages, and readable code. Runtime Wine/client assets are separate from the portable emulator.</p>
+<p>Environment cleanup: invoking <code>winedbg --help</code> accidentally created a fresh default <code>~/.wine</code> during investigation. Its processes were stopped and that newly created prefix moved to <code>client/.runtime/accidental-default-wine-prefix</code> for reversible cleanup. The project prefix remains <code>client/.runtime/wine32</code>.</p>
+<h3>Player-only refresh trial (14:30–14:32 local)</h3>
+<p>To isolate the map corruption seen when both post-creation records were sent,
+this run kept the <code>0x3c</code> player refresh and omitted the <code>0x3d</code> profile refresh.
+The startup <code>0x3c</code>/<code>0x3d</code> placeholders remain unchanged. Trace
+<code>session-1792445396376423182.log</code> records the saved <code>Subvoltic</code> create request,
+the <code>0x88</code> completion, then only a 47-byte <code>0x3c</code> refresh. The user reported
+that the training menus were working and that the news ticker was scrolling.
+After <strong>Go To Planet</strong>, the client sent <code>0x91</code> for Solaris (planet 121); the
+server saved the location but sent no response. Repeated <code>0xa7</code> planet-state
+polls and <code>0xa3</code> heartbeats followed, with no <code>0xad</code> lobby-room request.</p>
+<p>The map remained visible without the clipped Solaris-description overlay from
+the prior no-<code>0xa8</code> run that sent both post-creation refreshes. The captured
+screen has a Pilot Information panel with location and statistics shown as
+unavailable (<code>???</code>), consistent with the omitted profile data. This points to
+the post-creation <code>0x3d</code> as a likely source of the earlier visual corruption,
+but the result is not conclusive: the profile-only trial has not been run.
+Screenshot: <a href="#local-artifacts"><code>evidence/solarismap-player-update-only.png</code></a>.</p>
+<p>This trial confirms that recording a successful <code>JoinPlanet</code> in server state
+does not trigger the client transition by itself. The client remained on the
+map, so the missing lobby transition is still the next blocker. The earlier
+empty <code>0x97 READY_ROOM_LIST</code> reply also failed to advance the client; a useful
+response likely needs an additional success update before the client requests
+rooms. The room-list serializer at <code>0x5287a0</code> writes the counted 4-byte list
+at <code>+0x08</code>, the ordered tree size at <code>+0x28</code>, then each tree key/value pair
+from <code>+0x20</code>. The known-valid empty eight-byte body represents an empty list
+and empty tree; it is not a populated room encoding.</p>
+<p>The source now leaves the post-creation profile refresh disabled while this
+trial is investigated. Startup still sends the placeholder profile so the
+client exits its upload screen. Build succeeded with the bundled Go toolchain;
+no Go tests were run during this client-only experiment.</p>
+<h3>Malformed populated-room-list probe (14:39 local)</h3>
+<p>To see whether the client would advance on room data, the server briefly sent
+an 84-byte <code>0x97 READY_ROOM_LIST</code> immediately after accepting Solaris
+<code>JOIN_PLANET</code>. The client showed a Microsoft Visual C++ Runtime Library dialog
+with “abnormal program termination” as soon as <strong>Go To Planet</strong> was clicked.
+The trace is <a href="#local-artifacts"><code>session-1792445946435812621.log</code></a>
+and the captured screen is
+<a href="#local-artifacts"><code>evidence/solaris-one-room-list-crash.png</code></a>.</p>
+<p>This was an invalid format probe, not evidence that a valid populated list is
+unsafe. The ID0x97 serializer at <code>BT3025.exe:0x5287a0</code> does not serialize a
+top-level count followed by <code>BTRoomInfo</code>. It writes a counted 4-byte list at
+object offset <code>+0x08</code>, the ordered tree size at <code>+0x28</code>, then each tree node's
+custom string-like key and 32-bit value. The decoder at <code>0x528810</code> confirms the
+same outer sequence. The map's meaning and how either collection relates to
+room records remain unknown. Our candidate placed a <code>BTRoomInfo</code> where the
+list expects a 4-byte element and omitted the tree count and entries; that does
+not match the serializer and likely desynchronized decoding before the crash.</p>
+<p>The live <code>JOIN_PLANET</code> handler no longer sends this guessed <code>0x97</code> response.
+It persists the pilot's destination and waits for an observed client request.
+The known-valid empty <code>0x97</code> remains only as the reply to <code>REQUEST_LOBBY_ROOMS</code>
+(<code>0xad</code>); it still has not been shown to trigger the map-to-lobby transition.
+Build was re-run after removing the unsafe response; no Go tests were run.</p>
+<h3>Clean join baseline after removing the room-list guess (14:42–14:47 local)</h3>
+<p>The client reconnected from its saved <code>Subvoltic</code> call sign and reached the
+map without a crash or visual corruption. After the user clicked <strong>Go To
+Planet</strong>, trace
+<a href="#local-artifacts"><code>session-1792446163786460377.log</code></a>
+records <code>0x91</code> for Solaris (121), then repeated <code>0xa7</code> requests for planet 0
+and <code>0xa3</code> heartbeats. The server sent no response to the valid join; the user
+confirmed that the client stayed on the map. No <code>0xad REQUEST_LOBBY_ROOMS</code> was
+sent. The screenshot is
+<a href="#local-artifacts"><code>evidence/solaris-clean-baseline-map.png</code></a>.</p>
+<p>This is the current safe baseline. Removing the malformed <code>0x97</code> candidate
+avoids the crash, but does not advance the client. The next protocol target is
+the correct state or success update that takes the client from the map into
+the planet/sector flow; a lobby room list is not requested yet.</p>
+<h3>Recovered 0xa8 element codec and safe schema probe (14:51 local)</h3>
+<p>Disassembly of the <code>0xa8 PLANET_STATE_LIST_UPDATE</code> collection decoder at
+<code>BT3025.exe:0x4e58a0</code> shows it constructs each list element with
+<code>0x517c20</code>, then dispatches the element decoder at <code>0x517d40</code>. The matching
+serializer is <code>0x517ce0</code>. <strong>Correction (16:47):</strong> the first two element fields
+are uint32 values, not strings. Their wrapper vtable is <code>0x586240</code>; its
+serializer at <code>0x513b60</code> writes only the four-byte value at object <code>+0x04</code>,
+and its decoder at <code>0x513b80</code> reads one uint32. The remaining layout is a
+uint32 count followed by that many uint16 values, a uint32 count followed by
+that many bytes, and one final byte.
+The enclosing PDU ends with the uint32 sequence number and uint16
+seconds-until-shift field. This layout differs from cached <code>PlanetInfo</code>, which
+explains why copying VCR cache records into the list was unsafe.</p>
+<p>The executable does not identify the element fields' meanings in this codec,
+and we have not found a reliable public BT3025 protocol schema. The Go server
+now has an encoder for the recovered shape and an opt-in
+<code>-planet-state-schema-probe</code> flag. The original version encoded a Solaris
+string and was malformed under the corrected layout. It is now a numeric
+one-entry probe with first value 121, second value zero, empty arrays, and a
+zero flag (27-byte PDU body). The revised packet was sent in the later 16:49
+trial: the client stayed open through the subsequent Solaris join but remained
+on the map. This confirms decoder safety for that packet shape, not field
+semantics, authoritative Solaris data, or a lobby transition. The flag is off
+by default and mutually exclusive with the VCR experiments.</p>
+<p>An Internet search for the exact <code>PLANET_STATE_LIST_UPDATE_PDU</code> and its
+record names did not surface a BT3025 wire-format source. The separate Solaris
+1996 server and other Aries-era multiplayer services remain useful for service
+boundaries such as persistent world state, lobby presence, and combat, but
+their inner messages do not establish this client's record layout. For this
+codec, local executable disassembly is the evidence.</p>
+<h3>Malformed string-shaped planet-state probe and client failure (14:56–14:58 local)</h3>
+<p>This client was launched with the required Aries startup argument:
+<code>./client/scripts/launch.sh game aol:127.0.0.1:15000:key:local-dev</code>. It
+connected successfully, completed startup/config sync, replayed the saved
+<code>Subvoltic</code> create request, and reached the map. The trace
+<a href="#local-artifacts"><code>session-1792446987716275832.log</code></a>
+records the user clicking <strong>Go To Planet</strong>: <code>JOIN_PLANET</code> (<code>0x91</code>) for Solaris
+(ID 121), followed by a global <code>REQUEST_PLANET_STATES</code> (<code>0xa7</code>) for ID 0. With
+the original <code>-planet-state-schema-probe</code> enabled, the server sent a malformed
+40-byte <code>PLANET_STATE_LIST_UPDATE</code> (<code>0xa8</code>) containing the bytes of <code>Solaris</code>
+where the client expected numeric fields.</p>
+<p>The user reported that the map stayed open and then clicked <strong>Game</strong> in the
+upper-left menu; the client displayed a Microsoft Visual C++ Runtime Library
+“abnormal program termination” dialog. The captured screen
+<a href="#local-artifacts"><code>planet-state-schema-probe-runtime-error.png</code></a>
+shows the map's House territories rendered black, Solaris selected, and the
+runtime dialog over the map. The Wine log
+<code>client/.runtime/logs/game-20261019-145609-303245.log</code> ends with
+<code>allocate_virtual_memory out of memory ... size 40010000</code> (a 1 GiB allocation).
+At capture time the game process and TCP connection were still present behind
+the dialog; the trace has no client PDU after the <code>0xa8</code> response.</p>
+<p>This is not a successful planet transition. The packet was malformed: the
+client expected two numeric fields, but the probe wrote a string length and
+text. Subsequent bytes were therefore decoded at the wrong offsets. The OOM
+line is direct evidence for a local allocation failure; it does not prove
+whether the one-entry response triggered it, whether
+the <strong>Game</strong> menu path exposed an earlier fault, or whether host memory pressure
+contributed. A nearby host snapshot reported about 1 GiB available and swap
+nearly full. Do not use this probe in normal runs; the flag remains opt-in and must stay off
+until the state fields and valid values are identified. The successful client
+startup also confirms the earlier upload screen was caused by omitting the
+<code>aol:127.0.0.1:15000:key:local-dev</code> argument, not by the lobby handler.</p>
+<p>After capturing the error, I stopped the Wine session and restarted the server
+without experimental flags. A fresh launch with the correct <code>aol:</code> argument
+connected at 15:00:30, completed Aries login/config synchronization, and
+displayed the intro page with <strong>Next</strong>. No character-creation, join, or
+planet-state request has occurred in this safe run yet. This re-confirms that
+the upload screen is a client-launch-stage issue when the Aries startup
+argument is absent; it is separate from the still-unimplemented planet-to-lobby
+transition.</p>
+<h3>Latest clean map trace and EXIT_ROOM handling</h3>
+<p>In the later clean client session, the user reports the top menus render again.
+Trace <a href="#local-artifacts"><code>session-1792447230304058790.log</code></a>
+records the client creating/reusing <code>Subvoltic</code>, sending <code>JOIN_PLANET</code> (<code>0x91</code>)
+for Solaris (121), polling global planet state (<code>0xa7</code>, ID 0), and then sending
+<code>EXIT_ROOM</code> (<code>0x17</code>) with a four-byte empty-string body. The server previously
+ignored <code>0x17</code>; no room-list request (<code>0xad</code>) follows, and the client remains on
+the map. An earlier note in this investigation misidentified <code>0x17</code> as
+<code>FIND_PLAYER</code>; the client's dispatch table and message class strings identify
+<code>0x17</code> as <code>EXIT_ROOM</code> and <code>0x18</code> as <code>FIND_PLAYER</code>.</p>
+<p>The server now parses the length-prefixed exit-room name, removes the active
+pilot from any mission-room seat, and sends a same-class <code>0x17</code> room update as
+an acknowledgement. The trace shows only a client request, so treating this
+same-class update as the expected acknowledgement is an explicit trial
+hypothesis. The handler is idempotent for pilots who are not in a mission room.
+Planet joins also now remove stale mission-room seats before updating location,
+and rejoining the same city preserves its city assignment instead of silently
+moving the pilot to city 1.
+Keep the client open and inspect the next map-to-Solaris attempt: if it still
+does not change screens, capture whether it sends another message after this
+reply before trying any populated <code>0x97</code> or <code>0xa8</code> payload.</p>
+<p>The next clean run remained on the map. Trace
+<a href="#local-artifacts"><code>session-1792449434067515883.log</code></a>
+shows character creation/reuse for <code>Subvoltic</code>, <code>JOIN_PLANET</code> for Solaris
+(121), and repeated global <code>0xa7</code> planet-state polls. It ends without <code>0x17</code>
+or <code>0xad</code>, so this run does not exercise the trial <code>EXIT_ROOM</code> acknowledgement
+and provides no evidence that the client attempted to enter the city lobby.</p>
+<p>The Player's Guide says a pilot who has completed training should click <strong>Go To
+Planet</strong> and appear in one Solaris city lobby; it separately describes the
+sixteen-city selection prompt for experienced pilots returning to Solaris.
+That supports using a direct cadet-to-city-lobby transition as the acceptance
+target, rather than inserting an Inner Sphere sector-selection step. See the
+<a href="https://device.report/m/9776385816d7385322976ddba35c95e5bb7b7f7fc15658ebbc6d92bf324cdbc1.pdf">MPBT:3025 Player's Guide v1.4.5, pages 8–10</a>.</p>
+<h3>Design-spec research (SDS reference included)</h3>
+<p>The supplied 1998 Software Design Specification is now kept in
+<a href="../../reference/sds/btech3025-sds-v1.1a.doc"><code>reference/sds/btech3025-sds-v1.1a.doc</code></a>,
+and the player manual is in
+<a href="../../reference/manual/Multiplayer-Battletech-3025_Manual_Win_EN.pdf"><code>reference/manual/Multiplayer-Battletech-3025_Manual_Win_EN.pdf</code></a>.
+The extracted SDS text and earlier analysis notes remain in the separate client
+research area. These documents provide product-behavior evidence, not packet
+definitions; protocol findings also rely on server traces, implementation
+fixtures, and observed behavior.</p>
+<p>The SDS makes a Solaris city lobby a persistent player location with user
+presence and navigation, and describes the Solaris Starport → Tram → five
+Arenas flow. It also requires the host to preserve location across login and
+world data to refresh within five seconds (§§4.1.3, 4.1.6, 4.12). That supports
+the location/world model but does not establish which PDU causes this client
+to switch from the map view.</p>
+<p>One isolated transition trial sent the already-used <code>0x3c UPDATE_PLAYER</code> after
+saving the pilot's destination. Trace
+<a href="#local-artifacts"><code>session-1792450142919844307.log</code></a>
+confirms a <code>JOIN_PLANET</code> for Solaris followed by the 46-byte <code>0x3c UPDATE_PLAYER</code> refresh. The client stayed on the map, then sent only its
+heartbeat. No lobby request followed. This rules out the existing
+player-refresh message by itself as the missing transition signal, so the
+duplicate refresh has been removed.</p>
+<p>The client binary's profile metadata names an <code>m_lastPlanet</code> field, and the
+decoded profile serializer places it at object offset <code>+0xd4</code>. A field-focused
+trial sent a <code>0x3d UPDATE_PROFILE</code> after the saved Solaris join with that field
+set to <code>Solaris</code>. Trace
+<a href="#local-artifacts"><code>session-1792450439664245208.log</code></a>
+shows the client sent <code>JOIN_PLANET</code> (<code>0x91</code>, planet 121), the server persisted
+the location, and then sent a 112-byte profile PDU. The client produced a
+Microsoft Visual C++ Runtime Library “abnormal program termination” dialog
+while still on the map. The trace contains no client message after the profile
+update.</p>
+<p>This is a strong temporal correlation, not proof that <code>m_lastPlanet</code> alone
+caused the termination: the other profile fields still contain empty
+development values, and the client did not send a diagnostic packet. The
+post-join profile update and its planet-populated builder have therefore been
+removed. Startup's previously used empty profile remains unchanged. Do not
+retry the populated profile update without decoding the complete profile
+contract. The server can safely record the pilot's Solaris location, but the
+map-to-lobby transition is still unresolved; a successful <code>JOIN_PLANET</code> is not
+evidence that the client entered a lobby.</p>
+<p>After removing that update, the user repeated the full Solaris path. The client
+stayed on the map and did not crash. Trace
+<a href="#local-artifacts"><code>session-1792450621849546199.log</code></a>
+shows the server receiving <code>JOIN_PLANET</code> for Solaris, followed by client
+<code>REQUEST_PLANET_STATES</code> (<code>0xa7</code>) polls for planet 0 and <code>0xa3</code> heartbeats. The
+server sent no reply to either request, and there was no <code>0xad REQUEST_LOBBY_ROOMS</code>. This confirms the rollback removed the crash on this run,
+but leaves the screen transition unresolved. The repeated global-state poll is
+the next observed server request to investigate.</p>
+<p>The user clarified the progression target: cadets go to Solaris, fight there
+until eligible to choose a faction, and do not choose a House before entering
+the Solaris lobby. This agrees with the Player's Guide's new-pilot path and
+remains distinct from later Inner Sphere travel.</p>
+<h3>Comparative ARIES redirect trial</h3>
+<p>The earlier-game reference repository was shallow-cloned read-only to
+<code>/home/sebulba/MPBT-Solaris-reference</code> from
+<a href="https://github.com/kenhuman/mpbt-server"><code>kenhuman/mpbt-server</code></a> at commit
+<code>4c12b96</code> on 2026-10-21. It is AGPL-3.0; no source was copied into this
+project. Its useful comparison is architectural: a lobby login can redirect
+to a second world connection, and room presence is initially seeded as a batch
+containing self and peers before incremental arrivals. Its inner frames and
+command IDs belong to the 1996 <code>MPBTWIN.EXE</code> client and are not BT3025 wire
+evidence.</p>
+<p>Internet research located the public <a href="https://github.com/kenhuman/mpbt-server"><code>kenhuman/mpbt-server</code></a>
+emulator for the earlier <em>MPBT: Solaris</em> client. Its README documents a 120-byte
+ARIES <code>REDIRECT</code> (<code>0x03</code>) with three 40-byte fields, then a second TCP connection
+to a world server where the client logs in again. That server acknowledges the
+login, sends a welcome marker, waits for the client's capability frame, then
+sends a loading-cursor command, scene initialization, room presence, a welcome
+broadcast, and a normal-cursor command.
+Our shipped <code>aries.dll</code> also dispatches an outer message type 3 through its
+connection path, so this is a credible architecture clue. The clients and inner
+protocols differ: the older game uses command frames where 3025 uses typed
+PDUs. This does not prove that BT3025 redirects after <code>JOIN_PLANET</code> or that it
+uses the same world bootstrap messages.</p>
+<p>An opt-in <code>-planet-redirect</code> experiment now sends that documented outer redirect
+to a separate local listener on port 15001 after persisting a Solaris join.
+The second listener uses the existing handshake only to capture what the 3025
+client asks for next; no experiment is enabled by default. This tests whether
+the 3025 client expects the same two-stage connection at this progression
+boundary without mixing the old game's inner game-command framing into 3025.</p>
+<p>The live redirect trial did open the second TCP connection. Trace
+<a href="#local-artifacts"><code>session-1792450988031937504.log</code></a>
+records the initial login, <code>JOIN_PLANET</code> for Solaris (121), and the 120-byte
+outer redirect (<code>0x03</code>) to <code>127.0.0.1:15001</code>. The client then logged in again;
+<a href="#local-artifacts"><code>session-1792451016339743396.log</code></a>
+records its 325-byte second <code>LOGIN</code>, the normal host greeting and startup
+configuration exchange, then <code>0xa7</code> planet-state polls and <code>0xa3</code> heartbeats.
+It did not send <code>0xad REQUEST_LOBBY_ROOMS</code> or another <code>0x91 JOIN_PLANET</code>.</p>
+<p>The user saw the Inner Sphere map with Solaris selected and the tutorial <code>Next</code>
+panel visible, and reported that the interface was visually bleeding again.
+This is not a successful lobby transition. The server sent the same generic
+bootstrap and placeholder pilot/profile updates on the redirected session;
+that may be inappropriate for a world-session login, but this single trial
+does not prove it caused the visual problem. The evidence confirms that outer
+redirect framing reaches a second Aries login, not that BT3025 uses the older
+game's redirect architecture to enter a planet lobby. Keep <code>-planet-redirect</code>
+off for ordinary runs until the distinct world-session startup is recovered.
+The normal server has been restarted without experimental flags.</p>
+<h3>BT3025 generic occupant-list PDU mapping (2026-10-21)</h3>
+<p>The executable's fixed-width PDU-name table and class descriptors confirm that
+the generic occupant PDUs share the same inner 16-bit ID namespace as the
+existing <code>LIST_ROOMS</code> (<code>0x26</code>) / <code>LIST_ROOMS_RESPONSE</code> (<code>0x27</code>) handling:
+<code>LIST_OCCUPANTS</code> is <code>0x24</code>, <code>LIST_OCCUPANTS_RESPONSE</code> is <code>0x25</code>, and
+<code>UPDATE_OCCUPANTS</code> is <code>0x3b</code>. The name lookup at <code>BT3025.exe:0x503bb0</code> indexes
+the table by the PDU's 16-bit ID, with 64-byte name slots.</p>
+<p>The <code>LIST_OCCUPANTS_RESPONSE</code> descriptor at <code>0x5932d8</code> points to serializer
+<code>0x50a600</code>. The request serializer at <code>0x50a8f0</code> writes its <code>m_roomID</code> string;
+the response serializer writes its <code>m_roomID</code> string followed by an occupant
+vector at object offset <code>+0x34</code>. The <code>UPDATE_OCCUPANTS</code> descriptor at
+<code>0x592e08</code> points to serializer <code>0x506a10</code>, which serializes an occupant vector
+at <code>+0x10</code>. Both vectors use helper <code>0x512360</code> to write the count and serialize
+each entry. The <code>BTPlayerInfo</code> virtual serializer at <code>0x51b690</code> matches the
+record shape used by the game's player-update PDUs, making it the current
+candidate occupant entry type; the exact <code>0x25</code> wire body still needs a
+captured request/response exchange.</p>
+<p>These are room-level roster messages, not evidence for the map's planet roster
+or the missing <code>JOIN_PLANET</code> success transition. The current two-client map
+traces have not shown <code>LIST_OCCUPANTS</code> (<code>0x24</code>), so do not send an unsolicited
+<code>0x25</code> response. The client still has not sent <code>REQUEST_LOBBY_ROOMS</code> (<code>0xad</code>)
+after <code>JOIN_PLANET</code>.</p>
+<h3>Rechecking the apparent join dispatcher</h3>
+<p>The earlier note that <code>BT3025.exe:0x41d1a0</code> handles the <code>JOIN_PLANET</code> PDU was
+incorrect. That function switches on the first 32-bit value of an internal
+message object: it subtracts 2, indexes a byte table at <code>0x41e3cc</code>, then uses
+the result to select a handler from the table at <code>0x41e398</code>. The value 0x91
+maps through table entry 0x0a to <code>0x41d469</code>, which calls <code>0x41eb00</code> to set a
+timer. This is not enough to identify the internal value as the wire PDU ID,
+and the branch does not establish a join-success response contract. The former
+claim that <code>0x91</code> maps to <code>0x41dfdb</code> should not be used; that target is table
+entry 9, not entry 10. The executable disassembly remains at
+<a href="#local-artifacts"><code>BT3025.exe.disassembly.txt</code></a>.</p>
+<p>The wire evidence remains the class names and serializers for
+<code>JOIN_PLANET_PDU</code> (0x91) and <code>JOIN_PLANET_FAILED_PDU</code> (0x92), plus the live
+request trace. The recovered PDU-name inventory contains the request and a
+typed failure, but no separately named successful-join PDU. That makes a
+server push of other world state or a service redirect plausible, not proven.
+The successful transition message is still unknown. Do not echo 0x91 or invent
+a 0x92 failure body to force a screen change. Continue by locating the actual
+network PDU receive dispatch and determining what state the client needs after
+a successful Solaris join.</p>
+<p>After restoring the normal listener and relaunching with the required <code>aol:</code>
+argument, the user repeated the Solaris path. Trace
+<a href="#local-artifacts"><code>session-1792451313844083080.log</code></a>
+records call-sign reuse, <code>JOIN_PLANET</code> for ID 121, then <code>0xa3</code> and global <code>0xa7</code>
+polling. The server sent no planet-state or transition update, and the user
+confirmed the client remained on the map. This re-establishes the safe baseline
+after the redirect experiment; it does not resolve the join response contract.</p>
+<h3>Planet-state consumers found in the map client</h3>
+<p>The preserved disassembly contains two explicit receive checks for wire PDU
+<code>0xa8</code>: <code>BT3025.exe:0x43ba95</code> and <code>0x460ee4</code>. The first obtains the decoded
+PDU's list head at <code>+0x10</code> and iterates its entries through <code>0x43bd70</code>, then
+calls <code>0x437610</code> for each entry. The second looks up a key from the current
+world object at <code>+0xa4</code> in the decoded list using <code>0x4290c0</code>, then uses the
+returned entry in a longer UI update path. This second path is embedded among
+combat UI labels including “Lance Alpha” and “The Defending Force”; it should
+not be assumed to run on the map screen. These are concrete UI consumers of
+the state list; the <code>0xa8</code> response is not merely an acknowledgement of
+<code>0xa7</code>. This does not yet identify the required element values or a join
+transition. The earlier one-entry schema probe used an incorrect string layout;
+it did not establish whether a structurally valid element is safe.</p>
+<h3>Zero-result join-failure trial (16:29 local)</h3>
+<p>An isolated test sent a correctly typed <code>0x92 JOIN_PLANET_FAILED</code> with a zero
+result and an empty string after a valid Solaris <code>0x91 JOIN_PLANET</code>. Trace
+<a href="#local-artifacts"><code>session-1792452518054888615.log</code></a>
+records the 14-byte response. The client remained on the map and displayed a
+ComStar dialog reading “Failure Received!”, <code>MessageID=146</code>, <code>StatusCode=0</code>,
+and empty <code>ReasonText</code>. The captured screen is
+<a href="#local-artifacts"><code>join-planet-zero-result-failure.png</code></a>.
+Unlike the zero-result <code>0x88</code> create-character completion, a zero-result
+<code>0x92</code> is still treated as a failure display. This rules out <code>0x92</code> as the
+successful join transition in this client. The opt-in probe was removed from
+the server after the trial.</p>
+<h3>Full named-list planet-state trial (16:32 local)</h3>
+<p>To test whether the one-entry <code>0xa8</code> probe failed because the map needed a
+complete list, an opt-in run sent 121 entries in planet-ID order using names
+from the saved world. Every entry used the then-assumed string layout, left
+the second string and both arrays empty, and set the flag to zero. The encoded PDU was
+2,999 bytes, below the client buffer size. Trace
+<a href="#local-artifacts"><code>session-1792452706814456490.log</code></a>
+shows the client requesting global planet states (<code>0xa7</code> with ID 0) and the
+server sending this single <code>0xa8</code>. The game process exited with status 3
+immediately afterward, before call-sign or Solaris selection, and sent no
+further PDU. No useful Wine diagnostic was written to that run's log.</p>
+<p>The client expected uint32 values where this packet wrote string lengths and
+text. This malformed encoding is a sufficient explanation for the failure;
+the trial cannot establish anything about required planet count or field
+semantics. The opt-in full-list probe was removed.</p>
+<h3>House-name second-string trial (16:44 local)</h3>
+<p>The next isolated <code>0xa8</code> trial kept all 121 planet names but populated each
+entry's second string with its prototype owner House name (<code>none</code> for Solaris).
+Both arrays and the flag stayed zero. The encoded PDU was 3,675 bytes. Trace
+<a href="#local-artifacts"><code>session-1792453294284181281.log</code></a>
+shows the global <code>0xa7</code> request and single <code>0xa8</code> response. The client reached
+the map and call-sign pane, then displayed the Microsoft Visual C++ Runtime
+Library “abnormal program termination” dialog. Screenshot:
+<a href="#local-artifacts"><code>planet-state-house-probe-runtime-error.png</code></a>.
+The Wine <code>+seh</code> log for this run records <code>allocate_virtual_memory out of memory</code>
+for a <code>0x40010000</code> allocation just before the C++ runtime exception. This
+is consistent with the subsequently identified numeric/string encoding error.
+This trial cannot establish the second field's meaning. The probe was removed
+and normal startup restored without <code>0xa8</code> replies.</p>
+<h3>Correct numeric element layout and live one-entry result (16:49 local)</h3>
+<p>Further disassembly of the first two field serializers in the <code>0xa8</code> element
+showed that each writes a uint32, not a length-prefixed string. The updated Go
+encoder now writes two uint32 values, a counted uint16 array, a counted byte
+array, and a trailing byte. The preceding named-list crashes were malformed
+wire data: name lengths and bytes shifted the client's subsequent array counts.</p>
+<p>The corrected opt-in one-entry probe sent first value 121 and zero for every
+other field. Trace
+<a href="#local-artifacts"><code>session-1792453643556995813.log</code></a>
+records a 33-byte <code>0xa8</code> after a global <code>0xa7</code>, followed by normal heartbeat,
+another <code>0xa7</code>, Subvoltic creation, and Solaris join. The user confirmed the
+client stayed open on the Inner Sphere map. This establishes that the numeric
+element is safe to decode in this case. It does not establish the field
+semantics or a lobby transition.</p>
+<h3>Full numeric-list cardinality trial (16:56 local)</h3>
+<p>An opt-in <code>-planet-state-full-probe</code> now sends 121 structurally valid numeric
+entries, with first values 1 through 121 and all other fields zero. Its encoded
+PDU is 2,073 bytes. This isolates list completeness from the still unknown
+ownership and sector fields. The next trace,
+<a href="#local-artifacts"><code>session-1792454214877242901.log</code></a>,
+contains startup/configuration and heartbeats, but no global <code>0xa7</code> request or
+<code>0xa8</code> response. That session did not exercise the probe. The later October 20
+run exercised the 121-entry packet; its trace and unchanged map are recorded
+in the latest handoff entry below.</p>
+<p>Reviewing the newer October 20 captures found three startup sessions
+(<a href="#local-artifacts"><code>session-1792508819539932789.log</code></a>,
+<a href="#local-artifacts"><code>session-1792510229117640325.log</code></a>,
+and <a href="#local-artifacts"><code>session-1792511031958442614.log</code></a>)
+that end after call-sign creation and the global <code>0xa7</code> request. They contain
+neither a Solaris <code>0x91</code> join nor a server <code>0xa8</code> update, so they are not
+results for this trial. The client and server are currently stopped, as
+requested.</p>
+<p>Static follow-up on the <code>BTProfileInfo</code> formatter at <code>BT3025.exe:0x51c510</code>
+also recovered the labels <code>m_lastLogin</code>, <code>m_mechPoints</code>, <code>m_salary</code>,
+<code>m_lastPlanet</code>, and <code>m_qualificationBitField</code>. The known <code>m_lastPlanet</code> offset
+remains <code>+0xd4</code>; the formatter names alone do not establish valid values or
+make the failed post-join profile refresh safe. Keep the startup fixture and
+post-join omission unchanged until the full profile contract is decoded.</p>
+<h3>0xa8 record lookup key recovered</h3>
+<p>Further inspection of the counted-container decoder at <code>0x4e58a0</code> shows that
+it inserts decoded records into a keyed tree using the first serialized
+<code>uint32</code> (the entry object's value at <code>+0x8</code>). The second consumer at
+<code>0x460ee4</code> performs a lookup in that tree using a <code>uint32</code> read from the
+current world object at <code>+0xa4</code>; the lookup helper's comparator is at
+<code>0x42fcd0</code>. This is stronger evidence than the earlier generic list iteration:
+the first wire value is a lookup key, and the client later requests the key
+associated with its current world object. The field is still unnamed by the
+binary metadata, so call it a record key until the <code>+0xa4</code> world-object field
+is independently identified. Its use is consistent with a planet ID, but
+does not prove that label.</p>
+<p>This makes the existing 121-entry numeric probe (keys 1 through 121) a useful
+cardinality/key-presence trial, but it still cannot populate ownership,
+control, or sector state because the second scalar, arrays, and flag have no
+recovered meanings. The probe was not exercised in the October 20 captures,
+and remains off by default. The next useful client trace must reach the
+Solaris <code>0x91</code> join and the global <code>0xa7</code> poll while the numeric probe is
+enabled; only a captured UI change or subsequent <code>0xad</code> request would add
+evidence about the transition.</p>
+<h3>0x97 ready-room list wire shape recovered statically</h3>
+<p>The <code>READY_ROOM_LIST</code> serializer at <code>BT3025.exe:0x5287a0</code> calls a generic
+container codec for its member at <code>+0x08</code>, then writes the size of the ordered
+tree at <code>+0x28</code>, then walks the tree at <code>+0x20</code> and serializes each node's
+<code>+0x0c</code> key followed by its <code>+0x24</code> value. The <code>+0x08</code> container writes a
+count followed by 4-byte elements using the uint32 element callbacks
+(<code>0x513b60</code>/<code>0x513b80</code>, decoder primitive <code>0x4ed2c0</code>); these are not inline
+<code>BTRoomInfo</code> records.</p>
+<p>The tree key is a custom string-like object: its serializer/decoder are
+<code>0x4f8710</code>/<code>0x4f8740</code> under vtable <code>0x591508</code>, and its formatter prints string
+data. The comparator at <code>0x4f8660</code> compares the key's byte content and length
+before a secondary scalar at key offset <code>+0x14</code>. On the wire, the key
+serializes that uint32 discriminator followed by a length-prefixed string; the
+discriminator's meaning is unknown. The value is a 32-bit wrapper whose
+serializer at <code>0x513b60</code> writes its <code>+0x04</code> field; its formatter labels it
+<code>m_value</code>. This recovers the wire shape as a
+counted list of 32-bit elements followed by a counted tree of uint32
+discriminator, length-prefixed string, and uint32 value entries. It does not
+show what either collection means or how list elements refer to room records.
+The server now has a neutral typed encoder for this structure, but still sends
+the empty form until the list and tree meanings are known well enough to supply
+real values.</p>
+<p><code>BTRoomInfo</code> has a separate 0xb8-byte client object codec at <code>0x51f1f0</code> and
+<code>0x51f320</code>. Its formatter at <code>0x51f460</code> exposes labels including
+<code>m_roomType</code>, <code>m_parentLobby</code>, <code>m_totalOccupancy</code>, <code>m_minRank</code>, <code>m_maxRank</code>,
+<code>m_desc</code>, <code>m_planet</code>, <code>m_destroyEmpty</code>, <code>m_visible</code>, seat counts, and level
+fields. That record codec is not directly called by the <code>+0x08</code> list's
+4-byte-element callbacks. So the earlier crash probe was structurally wrong:
+it put a <code>BTRoomInfo</code> body where the client expects 4-byte list elements, and
+omitted the tree count and entries. This static finding does not establish how
+the auxiliary tree relates to room records, nor a valid populated room-list
+body. No new live probe was run; the game and server remain stopped.</p>
+<h3>Full planet-state cardinality check (run 2026-10-20)</h3>
+<p>The remaining bounded data question is whether the map's lookup requires all
+121 record keys. The opt-in <code>-planet-state-full-probe</code> sends 121 structurally
+valid numeric records keyed 1 through 121, with every other record field zero.
+Only the key's lookup role is supported by the binary evidence; the zeroed
+fields are not authoritative planet state and may change map rendering. This
+check can determine whether the client needs a complete key set before it can
+use Solaris state, but it cannot by itself prove the field meanings.</p>
+<p>The 121-entry probe was run with the bundled Go toolchain:</p>
+<pre><code class="language-bash">./runtime/toolchain/go/bin/go run ./cmd/server -planet-state-full-probe
+</code></pre>
+<p>The client was launched from the project root with its required Aries address:</p>
+<pre><code class="language-bash">./client/scripts/launch.sh game aol:127.0.0.1:15000:key:local-dev
+</code></pre>
+<p>The server sent the 2,073-byte 121-entry snapshot after the client's first
+global <code>0xa7</code> request. The user first reported remaining on the map, then
+reported that the map started “doing stuff” after the reply. The client stayed
+connected and sent further <code>0xa7</code> requests for planet 0. The captured trace has
+no subsequent <code>0xad</code> lobby-room request, so the probe changed map behavior but
+has not yet demonstrated a Solaris lobby transition. The visual change has not
+been identified precisely, and this environment's CUA surface exposes no app
+window for a screenshot.</p>
+<p>Next, while the same client remains open, select Solaris and click <strong>Go To
+Planet</strong> once if that has not already been done after the map changed. Check the
+new trace for <code>0xad</code> and record whether the client stays open or changes screens.
+Keep this run separate from either VCR flag and from any populated <code>0x97</code>
+response.</p>
+<h3>Automated local checks and CLI evidence capture (2026-10-20)</h3>
+<p><code>cmd/server/main_test.go</code> now drives the server through a synthetic Aries peer:
+login/bootstrap, pilot creation, Solaris <code>0x91</code>, the safe 121-key numeric
+<code>0xa8</code> probe, and a <code>0xad</code> request answered only with the empty <code>0x97</code> form.
+This checks server protocol behavior and trace output; it does not prove that
+the Windows client accepts a lobby transition.</p>
+<p>Run the current suite from the project root with <code>./scripts/test.sh</code>.
+<code>client/scripts/capture-test-evidence.sh [trace.log] [screenshot.png] [trace-offset]</code> captures the game window through X11 and summarizes the trace,
+optionally from a saved byte offset. It does not start or stop the processes or
+send mouse input.</p>
+<p>For the live full-cardinality session, a CLI X11 capture confirmed Solaris was
+selected on the Inner Sphere map. One click was sent to <strong>Go To Planet</strong>; the
+screen stayed on the map and the trace added only the regular <code>0xa3</code> and <code>0xa7</code>
+traffic. The session contains one earlier <code>0x91</code> before the initial <code>0xa8</code>,
+but no later <code>0x91</code>, <code>0xad</code>, or <code>0x97</code>. The capture is
+<a href="#local-artifacts"><code>solaris-map-after-click-20261020.png</code></a>.
+The original server and game PIDs later exited; they were not restarted.</p>
+<h3>Restarted live Solaris flow and repeatable join probe (2026-10-20, 10:24–10:29 local)</h3>
+<p>After the user authorized starting the services if needed, the server and client
+were started with the commands above. The game opened on the intro screen; a
+CLI X11 capture showed it clearly after the first early capture was black. The
+visible Next button advanced to the Inner Sphere map and the call-sign form.
+Using the existing test pilot <code>Subvoltic</code> produced <code>0x87 CREATE_CHARACTER</code>;
+the server answered with <code>0x88</code> and <code>0x3c</code>. Exiting the training chooser
+returned to the map with Solaris selected and <strong>Go To Planet</strong> active. The
+Basic Training lesson itself was not launched; this live check covers the map
+and join protocol path, not tutorial combat.</p>
+<p>The fresh trace is
+<a href="#local-artifacts"><code>session-1792517080500724733.log</code></a>.
+It records the 2,073-byte 121-key <code>0xa8</code> after the first global <code>0xa7</code>, followed
+by a single <code>0x91 JOIN_PLANET</code> for Solaris (planet 121) after the button click.
+The screen stayed on the Inner Sphere map but changed to show the
+Communications and <strong>MechWarriors on Planet</strong> panels. The trace tail after the
+join contains five <code>0xa7</code> requests for planet 0 and three <code>0xa3</code> heartbeats;
+neither <code>0xad</code> nor <code>0x97</code> appeared. The probe therefore reaches the server-side
+join request and changes the map panels, but has not yet reached a lobby-room
+request or left the map.</p>
+<p>The key captures are
+<a href="#local-artifacts"><code>solaris-after-go-to-planet-20261020.png</code></a>
+and
+<a href="#local-artifacts"><code>solaris-after-wait-20261020.png</code></a>.
+The repeatable map-only driver is
+<code>client/scripts/probe-solaris-join.sh --confirm-map</code>; it captures the screen and
+trace around the Solaris selection and one <strong>Go To Planet</strong> click, then watches
+the trace for up to 30 seconds for <code>0x91</code> and <code>0xad</code>. It requires
+the explicit map confirmation because it sends UI input, and it does not start
+or stop either process. <code>client/scripts/x11-game-input.c</code> provides its XTest
+mouse click. No VCR planet-state flag or populated <code>0x97</code> response was used.</p>
+<p>A read-only X11 capture at 10:41 local is
+<a href="#local-artifacts"><code>solaris-current-20261020.png</code></a>.
+It still shows the selected Solaris map with empty <strong>Communications</strong> and
+<strong>MechWarriors on Planet</strong> panels. The prior 10:35 capture had 22 global <code>0xa7</code>
+requests and 11 <code>0xa3</code> heartbeats; by this 10:41 capture, the trace had grown
+to 34 <code>0xa7</code> requests and 17 <code>0xa3</code> heartbeats, still with no <code>0xad</code> or <code>0x97</code>.
+The map's bottom status ticker changed between captures (including a
+<code>House Steiner: 2776</code> line), while the room panels stayed empty. The driver now
+refuses to send another <code>0x91</code> if the active trace already contains a join, and
+it checks a cropped footer fingerprint from the known pre-join map before
+clicking. The current joined screen and the training chooser both fail that
+screen check.</p>
+<p>Static cross-check of the game-PDU factory confirms the room-request opcode:
+factory case <code>0x2c</code> constructs the class at <code>BT3025.exe:0x521ed0</code>, whose class
+descriptor is <code>0x593ccc</code>. The descriptor's first word is <code>0x00ad</code>; the factory
+case number is an internal class ordinal, not the wire ID. Keep
+<code>REQUEST_LOBBY_ROOMS</code> at <code>0xad</code> in the server.</p>
+<p><code>client/scripts/start-solaris-test-stack.sh</code> now brings up only missing test
+processes and waits for the visible game window. Its reuse path was run against
+the current stack and confirmed the existing server and game PIDs stayed the
+same. A newly started server uses only the previously observed 121-key numeric
+probe; it does not enable VCR state or send a ready-room list without a request.</p>
+<h3>Delayed client fault and automated startup-to-join repeat (2026-10-20)</h3>
+<p>The earlier live client later showed a Wine <strong>Program Error</strong> dialog. Its log,
+<code>client/.runtime/logs/game-20261020-102421-19048.log</code>, reports an unhandled
+write fault at <code>BT3025.exe:0x5388fd</code> (<code>bt3025+0x1388fd</code>) to address <code>0x00000004</code>.
+Wine's detail window records <code>ECX=0</code> and the faulting <code>movl %edi,0x4(%ecx)</code>;
+the backtrace enters the nearby client heap bookkeeping/deallocation code at
+<code>0x53884b</code>. This establishes a client heap fault, not its cause. It happened
+after the session's 2,073-byte 121-entry <code>0xa8</code> snapshot and prolonged map
+traffic, so the snapshot remains a possible contributor but is not proven to
+be responsible. Captures:
+<a href="#local-artifacts"><code>solaris-current-continue-20261020.png</code></a>
+and
+<a href="#local-artifacts"><code>solaris-client-crash-details-20261020.png</code></a>.</p>
+<p>After the crash, the Wine session and client were reset while server PID 19041
+was left running. A fresh client connection used the same full numeric probe.
+Trace
+<a href="#local-artifacts"><code>session-1792518726106206771.log</code></a>
+records <code>0x87 CREATE_CHARACTER</code>, the server's <code>0x88</code>/<code>0x3c</code> pilot update, one
+2,073-byte <code>0xa8</code> snapshot (2,067-byte PDU body), and then <code>0x91 JOIN_PLANET</code>
+for Solaris (121). The map drew its planet symbols and Solaris details; after
+the join click it showed <strong>Communications</strong> and <strong>MechWarriors on Planet</strong>,
+both empty. The 30-second post-click watch found a heartbeat and another global
+<code>0xa7</code> only. There was no <code>0xad REQUEST_LOBBY_ROOMS</code>, no <code>0x97 READY_ROOM_LIST</code>,
+and no visible lobby transition. A later 10:59 capture, about six minutes after
+the click, still showed the map; the trace had seven <code>0xa3</code> heartbeats and 14
+global <code>0xa7</code> polls, with no crash dialog. This longer repeat still does not
+rule out the earlier delayed fault.</p>
+<p>The repeat captures are
+<a href="#local-artifacts"><code>solaris-relaunch-game-20261020.png</code></a>,
+<a href="#local-artifacts"><code>solaris-after-exit-training-20261020.png</code></a>,
+and
+<a href="#local-artifacts"><code>solaris-join-20261020-105349-after-wait.png</code></a>.
+The new
+<code>client/scripts/run-solaris-join-test.sh --confirm-startup-and-join</code> wrapper
+starts or reuses the stack, recognizes the intro, call-sign, training, and
+pre-join map screens, enters/reuses <code>Subvoltic</code>, exits the lesson chooser, then
+calls the guarded single-join probe. Screen fingerprints live in
+<code>client/scripts/screen-templates/</code>; the verifier is
+<code>client/scripts/verify-solaris-startup-screen.py</code>. The X11 input helper now
+types ASCII letters and digits for the call-sign field. The screen verifier
+matched each captured stage, and the helper successfully entered <code>Subvoltic</code>.
+The combined wrapper was not run from a fresh intro after being added; it was
+run against this joined session and correctly refused before sending any input.</p>
+<p><code>start-solaris-test-stack.sh</code> now waits for two consecutive visible 800x600
+window checks, rejects a visible Wine Program Error dialog, and uses <code>setsid</code>
+when it launches a missing process so the helper shell can exit independently.
+Its reuse path was verified without changing server PID 19041 or game PID
+23041. The original heap-fault session is evidence of a failure; neither this
+repeat nor the automation establishes the <code>0xa8</code> element semantics or the
+missing map-to-lobby response.</p>
+<h3>SDS starting ownership seed and lobby evidence (2026-10-20)</h3>
+<p>The SDS Appendix A lists planets by initial House affiliation. Its map rules
+say House/district borders come from that appendix and the planet marker/name
+take the current owner's House color (§§4.5.2.1, 4.5.2.1.3); the selected
+planet also shows its controlling House and a balance chart derived from hex
+control (§§4.5.3.1.2, 4.5.3.1.7).</p>
+<p>Matching Appendix A against the 120 non-Solaris names in
+<code>internal/game/planet_names.json</code> yields 108 unique starting affiliations:
+22 Davion, 22 Kurita, 18 Liao, 24 Marik, and 22 Steiner. Eleven cache names
+are absent from Appendix A, while Winfield appears under both Davion and
+Steiner. Those twelve entries remain unassigned; Solaris remains neutral as
+the SDS explicitly requires. <code>DefaultWorld</code> now seeds the unique matches at
+100% control for their listed House. New saved worlds record
+<code>ownership_seed_version: 1</code>. On open, an old world migrates only if all 120
+owners/control maps exactly match the previous round-robin prototype and no
+battles are recorded; custom ownership and campaign history are preserved.</p>
+<p>This establishes server-side initial owner data, but by itself does not color
+the running client map. At the time of this note, the <code>0xa8</code> entry fields had
+no verified owner/control mapping. The SDS is product behavior, not a packet
+schema.</p>
+<p>The lobby investigation remains unresolved. The SDS describes a city lobby as
+a persistent location with a view, title, user list, description, and
+navigation hotspots (§§4.1.6, 4.12.1), but it does not name the success PDU.
+Current code persists <code>JOIN_PLANET</code> (<code>0x91</code>) into the Solaris city model; live
+trace <code>session-1792518726106206771.log</code> still shows no post-join server PDU,
+no client <code>0xad REQUEST_LOBBY_ROOMS</code>, and no visible transition. Keep avoiding
+the VCR-derived <code>0xa8</code> and populated <code>0x97</code> experiments.</p>
+<p>The implementation was formatted and compiled to <code>/tmp</code> with the bundled Go
+toolchain; no Go tests were run. Existing server PID 19041 and game PID 23041
+were left running. The saved world file and current live session were not
+modified; the ownership migration applies on a future server startup.</p>
+<h3>Automated startup-to-join repeat (2026-10-20, 11:25 local)</h3>
+<p>The first wrapper attempt launched a fresh client but read the previous
+session's trace before Aries login had created the new one. After correcting
+trace selection and screen matching, the wrapper reran against that fresh
+client and completed the full path. It now waits for a new session trace when
+it starts a missing client and safely reuses the current trace when the game
+was already running. The startup screen matcher compares edge layout for the
+intro button and other fixed UI regions, since the current Wine render has a
+brightness shift from the saved templates; it still uses pixel color matching
+for distinguishing the empty and <code>Subvoltic</code> call-sign fields.</p>
+<p>The run recognized the intro, typed the <code>Subvoltic</code> call sign, submitted it,
+exited the training chooser, verified the pre-join map, then clicked <strong>Go To
+Planet</strong> once. Captures are
+<a href="#local-artifacts"><code>solaris-startup-20261020-112457-intro.png</code></a>,
+<a href="#local-artifacts"><code>solaris-startup-20261020-112500-call-sign-empty.png</code></a>,
+<a href="#local-artifacts"><code>solaris-startup-20261020-112504-call-sign-subvoltic.png</code></a>,
+<a href="#local-artifacts"><code>solaris-startup-20261020-112507-training.png</code></a>,
+and <a href="#local-artifacts"><code>solaris-startup-20261020-112509-map.png</code></a>.</p>
+<p>Trace
+<a href="#local-artifacts"><code>session-1792520472103837304.log</code></a>
+records one 2,073-byte <code>0xa8</code> update with 121 numeric keys, <code>0x91</code> for
+Solaris (121), ten global <code>0xa7</code> requests, and eight heartbeats. It contains no
+<code>0xad</code> lobby-room request or <code>0x97</code> room list. The after-wait capture
+<a href="#local-artifacts"><code>solaris-join-20261020-112510-after-wait.png</code></a>
+and a fresh 11:28 capture
+<a href="#local-artifacts"><code>solaris-current-20261020-1128.png</code></a>
+still show the Inner Sphere map with empty Communications and MechWarriors
+panels. The client remained alive while sending repeated global state polls.
+The House/district boundaries are colored, the inner map cells remain gray,
+and neutral Solaris remains white. This confirms the automated join probe and
+reproduces the lobby blocker; it does not validate live planet owner
+projection. The 121-entry <code>0xa8</code> state fields are still all zero and unnamed.</p>
+<p>The test did not restart server PID 19041. The missing game was started and is
+running as PID 26888. The join updated the persisted pilot location at 11:25;
+the ownership migration has not been applied to the running server's in-memory
+world and remains for a future startup.</p>
+<h3>Faction-colored territory reference and opt-in owner snapshot (2026-10-20)</h3>
+<p>The user supplied <code>p2t226-b-fresh-map.webp</code> as the expected fresh-map
+appearance. It clearly shows the 120 Inner Sphere territories filled by their
+owning House color: Steiner blue, Kurita red, Davion yellow, Marik magenta,
+and Liao green. Solaris is neutral and white. This resolves the prior visual
+uncertainty: the target includes faction-colored territory fills, not only
+colored borders or planet markers. <code>p2t235-b-ready.webp</code> shows the Solaris
+mission-room view and two cadets in the Alpha and Beta lances; it is a separate
+later-stage reference and does not define the join wire response.</p>
+<p>The local <code>BT3025.vcr</code> HouseInfo IDs are 0 <code>none</code>, then 1 Davion, 2 Kurita,
+3 Liao, 4 Marik, and 5 Steiner. A first opt-in owner snapshot placed these
+IDs in the second scalar of each <code>0xa8</code> element, but further disassembly
+showed that scalar is used as the key to a map-object lookup at <code>0x479290</code>,
+and again to update that object at <code>0x479230</code>/<code>0x478df0</code>. Substituting five
+House IDs for 121 map-object keys would alias many territories. The unrun
+owner-snapshot mode was removed. The first scalar is the collection lookup
+key; the owner encoding is still unknown. The earlier all-zero 121-key probe
+checked list cardinality only and cannot validate ownership colors.</p>
+<p>The saved <code>world.json</code> still has no <code>ownership_seed_version</code> and retains the
+prototype's 24-planets-per-House round-robin assignment. Server PID 19041 has
+that same older world in memory. On a future startup, the existing conservative
+migration should replace only that untouched synthetic seed with the SDS
+starting owners; the opt-in owner snapshot then reads the migrated world. The
+live world file was not edited while the server was running.</p>
+<p>The first join milestone remains open. The current trace still ends with the
+client on the Inner Sphere map after <code>0x91 JOIN_PLANET</code> for Solaris, without a
+visible transition or <code>0xad REQUEST_LOBBY_ROOMS</code>. Existing server PID 19041
+and game PID 26888 were left running while the owner-snapshot code was added.</p>
+<h3>Full client-cache owner seed and repeat join check (2026-10-20, 11:47–11:52)</h3>
+<p>The prior game process later showed a Wine page fault at <code>BT3025.exe:0x5388fd</code>
+after roughly 24 minutes of map polling. Its trace ended at 11:44:41 and the
+client log recorded the fault at 11:45:02. The fault is in a pointer write and
+does not identify the preceding game packet as its cause. The crashed client
+and Wine debugger were closed; the existing server PID 19041 was preserved.
+The guarded Solaris UI script launched a fresh client, completed the known
+intro/call-sign/training path, selected Solaris, and clicked <strong>Go To Planet</strong>
+once. Trace <code>session-1792522066610043032.log</code> records <code>0x91</code> planet 121,
+one 121-entry <code>0xa8</code> reply after <code>0xa7</code>, and no <code>0xad</code> within the 30-second
+watch. Capture <code>client/.runtime/captures/solaris-join-20261020-114804-before.png</code>
+has black territory interiors; the <code>after-wait.png</code> capture has gray cells and
+white interior borders, still without a lobby transition.</p>
+<p>Closer inspection of the preserved <code>PlanetInfo</code> VCR records found their
+serialized <code>m_house</code> field. The <code>PlanetInfo</code> formatter names the field at
+<code>BT3025.exe:0x515f56</code>, and the serializer emits it after ID, name, and type
+at <code>0x515cc9</code>–<code>0x515cd3</code>. Matching all 121 <code>[ID, name]</code> prefixes in the
+hash-checked VCR gives 25 Davion, 25 Kurita, 20 Liao, 25 Marik, 25 Steiner,
+and Solaris with special value 7. This resolves the twelve previously
+unassigned SDS names. It also differs from the SDS-derived assignment for
+Dixie (ID 83): the client cache says Steiner. The client cache is now the
+initial owner source in <code>internal/game/planet_names.json</code> for all 120
+non-Solaris worlds. Solaris remains neutral in the server model.</p>
+<p>New worlds have <code>ownership_seed_version: 2</code>. On load, version 0 synthetic
+round-robin or version 1 SDS ownership migrates only if the owner/control
+data still matches that exact untouched seed and no battles have been
+recorded. The previous SDS seed is retained in
+<code>internal/game/planet_sds_owners_v1.json</code> only to recognize it for safe
+migration. The current live <code>world.json</code> remains version 0, and the running
+server still has its old state in memory. Go package checks for game,
+protocol, and server pass; new game checks cover owner counts, Dixie, and
+preservation of edited ownership. The map wire owner field is still unknown,
+so this change alone does not color the client screenshot.</p>
+<h3>House-colored map validated; Solaris join still pending (2026-10-20, 11:53–12:00)</h3>
+<p>The earlier inference that the second <code>0xa8</code> scalar was a planet-object lookup
+key was wrong. A controlled A/B visual trial on isolated listeners resolved
+it. The 121-entry ID-mirror probe (<code>Key=planet ID</code>, second scalar=planet ID)
+colored only a small cluster near the map center; capture:
+<code>client/.runtime/captures/id-mirror-before.png</code>, trace:
+<code>runtime/traces/id-mirror/session-1792522423254859330.log</code>.
+The House probe (<code>Key=planet ID</code>, second scalar=owner HouseInfo ID) colored all
+five territories as in the user's reference image; capture:
+<code>client/.runtime/captures/house-probe-after-a8.png</code>, trace:
+<code>runtime/traces/house-probe/session-1792522545488433674.log</code>.
+Davion=1/yellow, Kurita=2/red, Liao=3/green, Marik=4/magenta,
+Steiner=5/blue, and Solaris=0/neutral in this state PDU. The client stayed
+stable. The ID-mirror result and House result show this scalar drives the
+faction-colored territory fills. Both isolated clients sent <code>0x91</code> when
+Solaris was clicked, but neither entered the lobby.</p>
+<p>The normal server path now builds a 121-entry owner snapshot from its live
+campaign world in response to the first global <code>0xa7</code> poll. It sends another
+only when the owner values change, incrementing the snapshot sequence. The
+unconfirmed VCR and schema probes remain explicitly opt-in. A fresh default
+server on port 15004 and client confirmed the normal path: trace
+<code>runtime/traces/default-owner/session-1792522732550236331.log</code>
+contains <code>0xa7</code> followed by a 2,073-byte <code>0xa8</code>; screenshot
+<code>client/.runtime/captures/default-owner-after-a8.png</code> passes all five region
+checks in <code>client/scripts/verify-faction-map-screen.py</code>. The prior gray map
+capture fails those same checks. After one Solaris click, the client sent
+<code>0x91</code> for ID 121, continued polling <code>0xa7</code>, sent no <code>0xad</code> during 30 seconds,
+and stayed on the correctly colored map in
+<code>client/.runtime/captures/default-owner-after-join.png</code>.</p>
+<p>Go tests pass for game, protocol, and server packages, including owner counts,
+legacy seed migrations, and owner-snapshot wire values. The original server
+PID 19041 on port 15000 was not restarted and still has its old in-memory
+world/probe. The validated default server PID 36313 and game PID 36346 remain
+running on port 15004. The two temporary experiment listeners on ports 15002
+and 15003 were stopped. The next work is the first successful Solaris lobby
+transition after <code>0x91</code>; the screenshot and trace do not show it yet.</p>
+<h3>Login identity and planet presence check (2026-10-20)</h3>
+<p>The normal port-15004 trace begins with a 334-byte Aries <code>LOGIN</code> frame whose
+two account-name slots read <code>unknown</code>; the launch key is <code>local-dev</code>. The
+client later sends <code>0x87 CREATE_CHARACTER</code> with the nine-byte call sign
+<code>Subvoltic</code>. The server replies with <code>0x88</code> and a call-sign-specific <code>0x3c PLAYER_UPDATE</code>. It had already sent placeholder <code>Local Pilot</code> records for
+both <code>0x3c PLAYER_UPDATE</code> and <code>0x3d PROFILE_UPDATE</code> before the character
+request. It sends no matching <code>0x3d</code> refresh afterward. After <code>0x91 JOIN_PLANET</code>, the server persists the Solaris location without a room or
+occupant update.</p>
+<p>The live capture <code>client/.runtime/captures/current-login-presence.png</code> shows
+the faction-colored map, Solaris selected, and an empty <strong>MechWarriors on
+Planet</strong> panel with count 0. The trace contains no <code>0xad REQUEST_LOBBY_ROOMS</code>
+or observed occupant request after the join. This supports the hypothesis
+that session identity/presence or the successful location handoff is missing;
+it does not demonstrate an extra password login requirement. A previous
+isolated <code>0x3c</code> refresh after the join did not change the screen, and a
+<code>0x3d</code> refresh with <code>m_lastPlanet</code> set to Solaris terminated the client.
+Recover the actual room/occupant PDU layout and receive path before another
+live transition payload experiment.</p>
+<p>The 2001 Player's Guide says the player first signed into EA.com with a member
+name and password, then clicked <strong>Play</strong> to launch the game (manual page 5).
+The current test invocation starts <code>BT3025.exe</code> directly with
+<code>aol:127.0.0.1:15004:key:local-dev</code>; it skips that retired account sign-in and
+the old EA/GILS <code>STARTGAME</code> bootstrap. A preserved GILS record confirms that
+the old handoff carried separate account/handle/session fields alongside the
+game connection string; its credential values are intentionally not copied
+into this note. Aries has startup argument parsing for <code>email</code>, <code>user</code>, and
+<code>password</code>, and its defaults include <code>unknown</code>, matching the direct-launch
+trace. This explains the <code>unknown</code> account label without implying that the
+call-sign form was an account login.</p>
+<p>Keep the identities distinct: the account/member name authenticated the EA
+session upstream; the call sign names the in-game pilot and is what the
+planet-presence list is expected to show. The direct local launcher has no
+real EA account authentication, but the empty planet list remains a separate
+missing room/occupant or world-location handoff after the pilot's <code>0x91</code> join.
+See <code>client/docs/linux-client-setup.md</code> for the operator-facing explanation.</p>
+<h3>Solaris planet presence update validated (2026-10-20, 12:24)</h3>
+<p>Disassembly of the <code>OCCUPANT_UPDATE_PDU</code> metadata at <code>0x5941c8</code> identifies
+message ID <code>0x94</code>. Its serializer at <code>0x529b30</code> writes the nested
+<code>BTPlayerInfo</code> object with the same serializer used by <code>PLAYER_UPDATE</code> (<code>0x3c</code>).
+The local server now sends this call-sign-specific record immediately after a
+successful <code>JOIN_PLANET</code> (<code>0x91</code>). The Go integration test checks that <code>0x94</code>
+uses that recovered player record, and <code>go test ./...</code> passes.</p>
+<p>A fresh client on isolated port 15005 selected Solaris and clicked <strong>Go To
+Planet</strong> once. The trace
+<code>runtime/traces/occupant-probe/session-1792524246412071876.log</code>
+records one received <code>0x91 JOIN_PLANET</code> and one sent <code>0x94 OCCUPANT_UPDATE</code>
+(41-byte record body). The screen then showed <strong>MechWarriors on Planet: 1</strong> and
+<strong>Cadet Subvoltic (Lvl 0)</strong>; capture:
+<code>client/.runtime/captures/occupant-probe-after-join-20261020-1224.png</code>.
+The map stayed visible, as in the user's fresh-map reference. The client made
+no <code>0xad REQUEST_LOBBY_ROOMS</code> request during the following 30 seconds, and the
+communications pane stayed empty. This confirms planet presence and resolves
+the empty roster for a local join; the room-list/chat handoff remains a
+separate step. The earlier login fields still read <code>unknown</code> on this direct
+local launch, but that did not prevent the client from showing its callsign.</p>
+<p>The test scripts now select the unique 800x600 game window by its dimensions,
+so stale 160x31 title windows from earlier Wine sessions do not block capture
+or the guarded join probe.</p>
+<h3>Solaris chat identity and channel routing (2026-10-20, 13:50–14:05)</h3>
+<p>Two isolated clients on port 15008 sent planet chat after joining Solaris.
+Both used message ID <code>0x08</code>; the PDU body carries the sender call sign (the
+BetaPilot packet includes the length-prefixed string <code>BetaPilot</code>) and ends in
+a channel byte. Live captures show All as <code>0x00</code> and House as <code>0x02</code>. All chat
+worked in both directions between Subvoltic and BetaPilot. A House message
+also reached the other pilot under the original planet-wide relay, even though
+neither pilot had a House affiliation.</p>
+<p>On the map, Tab cycles between All and House and wraps back to All. The manual
+restricts Team to Mission Rooms and combat, so no live Team message could be
+sent before the missing lobby/room transition. The chat PDU serializer writes
+its channel as the final byte; with observed All=<code>0x00</code> and House=<code>0x02</code>, the
+server now treats Team=<code>0x01</code> as the intervening enum value. This is a static
+inference, not a captured Team packet.</p>
+<p>The server relay now uses each joined pilot's persisted House and location:
+All stays within the same city, sector, or room, and House is delivered only
+to pilots with the same non-empty House in that location. Unrecognized channel
+values are echoed only to the sender until their routing context is known.
+Team is routed only to seated pilots with the same room ID and lance side;
+observers in that room can receive All but not Team. Unit tests cover all three
+channels, location boundaries, unassigned pilots, observers, and the sender-only
+fallback. This routing is not reachable from the live client yet because the
+room-join and seat-update message path is still unresolved. <code>go test ./...</code>
+passes.</p>
+<p>A live check of the modified build was attempted on isolated port 15009, but
+the fresh Wine prefixes reopened the client introduction flow and did not
+reach chat. That run does not count as live verification of the new House
+filter. The original game and server were left untouched; the successful live
+All/House observations above are from the prior build before filtering.</p>
+<h3>Solaris guide rules represented in the world model (2026-10-20)</h3>
+<p>The game model now represents the guide's Solaris progression and return-city
+flow in <code>internal/game</code>: cadets enter a capacity-checked city, graduates return
+to a sixteen-city directory and must select a city, occupancy is measured in
+'Mechs; Cancel restores the location from before the picker. City capacity is
+persisted as <code>max_mechs</code> while still reading old
+<code>max_pilots</code> saves. Each city maintains available empty practice rooms for
+cadets and graduates separately. Room rules allow either side, block mixing
+across graduation status, start a sixty-second countdown, run a lone ready
+pilot against an AI opponent, rebalance same-side ready players, and replenish
+empty room choices when one launches or completes. Solaris results award rank
+to cadets, grant the Graduation Medal at 1,200 points, and do not add rank or
+C-bills to graduate return battles. The current rank award values remain
+prototype scoring because the guide defers detailed scoring to another section.</p>
+<p>Rejected world updates now restore their pre-update in-memory state. Leaving a
+room preserves the existing countdown while at least one other pilot remains
+ready. Regression tests cover both cases, the All/House/Team chat routing model,
+room observers, and same-lance filtering. Standard and race-instrumented Go test
+runs pass, and the server builds.</p>
+<p>These are persisted game rules and are covered by <code>go test ./...</code>; they do not
+complete the legacy client's UI path. The map-to-city success update remains
+unidentified, <code>0xad</code> has not appeared in the observed map flow, and a populated
+<code>0x97</code> room list is still intentionally withheld because its fields' meanings
+are not established. The request/response codecs and state model should be
+connected only after the client receive path is understood; the earlier invalid
+populated-list experiment crashed the client.</p>
+<p>The return-city action now requires a graduated pilot to be in the pending
+Solaris city-picker state created by <code>JOIN_PLANET</code>; cadets remain in their
+automatically assigned city and cannot invoke the graduate-only picker. This
+prevents out-of-order city requests from bypassing the manual flow. Regression
+coverage also checks that rejected city changes leave the saved location intact.
+The full Go suite passes after this guard. No live client/server process was
+restarted, and the unavailable wire transition remains the blocker for
+end-to-end lobby testing.</p>
+<p>For a controlled live trial only, the server also has the opt-in
+<code>-experimental-solaris-empty-room-list-after-join</code> switch. It sends the verified
+empty two-container <code>0x97</code> after the normal occupant arrival following a
+Solaris join. The default remains off; no room entries are fabricated. The
+bootstrap integration test checks this exact message order. A client trial is
+still required to learn whether pairing the empty list with occupant presence
+changes the screen.</p>
+<h3>Empty room-list sequencing trial (2026-10-20, 15:15)</h3>
+<p>An isolated server on <code>127.0.0.1:15010</code> used a fresh world and the opt-in
+empty-list switch; no VCR or planet-state probe flags were enabled. The client
+reached the verified pre-join map with faction colors passing
+<code>verify-faction-map-screen.py</code>, then received exactly one <strong>Go To Planet</strong> click.
+Trace <code>runtime/traces/empty-room-after-presence/session-1792534557207857162.log</code>
+records <code>JOIN_PLANET</code> (<code>0x91</code>), an <code>OCCUPANT_ARRIVED</code> (<code>0x2b</code>) carrying the
+call-sign-specific <code>BTPlayerInfo</code>, then an empty <code>READY_ROOM_LIST</code> (<code>0x97</code>,
+eight-byte body). After 25 seconds the client remained stable on the map,
+showed one pilot in <strong>MechWarriors on Planet</strong>, and had sent no
+<code>REQUEST_LOBBY_ROOMS</code> (<code>0xad</code>). The result matches the earlier empty-list-only
+trial: this valid empty response does not produce the Mission List or the
+city-lobby screen. Captures are
+<code>client/.runtime/captures/solaris-empty-room-list-after-join-click.png</code> and
+<code>client/.runtime/captures/solaris-empty-room-list-after-wait.png</code>.</p>
+<p>The temporary client and server were isolated from the existing listeners;
+the map transition remains unresolved. This narrows the next protocol search:
+planet presence plus an empty ready-room list is insufficient, so the missing
+success state has to precede these lobby contents or use another verified
+message path.</p>
+<p>While that isolated client remained on the map, live chat was also exercised.
+The All message <code>testall</code> and House message <code>testhouse</code> both appeared in the
+Communications pane and echoed through the server. The raw <code>0x08</code> bodies
+include callsign <code>Subvoltic</code> and end with the observed channel bytes <code>0x00</code>
+(All) and <code>0x02</code> (House). Captures:
+<code>client/.runtime/captures/solaris-chat-all-live-check.png</code> and
+<code>client/.runtime/captures/solaris-chat-house-live-check.png</code>. Team remains
+unavailable to exercise in the live UI because the manual exposes it only in
+Mission Rooms/combat, and the client has not reached a Mission Room; the model
+test covers the inferred <code>0x01</code> route.</p>
+<p>The guarded startup helper was adjusted after this trial: a missing test server
+now starts with the validated default owner snapshot and gets a separate world
+file on non-default ports. It refuses experimental planet-state/redirect
+servers and checks that a reused game PID still has an established socket to
+the selected server. <code>MPBT_SOLARIS_TEST_PORT</code> selects an isolated port, while
+<code>MPBT_SOLARIS_TRACE_DIR</code> and <code>MPBT_SOLARIS_WORLD_PATH</code> can match a pre-existing
+test server. Shell syntax checks pass; live checks confirmed it refuses the
+existing 15000 full-probe server without stopping it and refuses a stale,
+disconnected client window on 15010.</p>
+<h3>GILS account and server connection evidence (2026-10-20)</h3>
+<p>The shipped GILS files provide direct evidence for the old EA connection path.
+In <code>client/MPBT3025andGILS/GILS/gilslog.txt</code>, the client requests
+<code>www.ea.com:10080/EAPlay</code>, receives an <code>application/x-gils-plugin</code> response,
+and parses <code>STARTGAME</code> for game ID 2088. The <code>cmdtxt</code> launches the game with an
+<code>aol:&lt;server&gt;:15000:key:&lt;opaque-ticket&gt;</code> string. GILS separately has the EA
+member handle, account ID, session ID, and instance ID, and sends HTTP
+<code>/GameHeartbeat</code> updates at two-minute intervals plus <code>GAMEQUIT</code> when exiting.
+Values from the historical account and ticket are deliberately omitted here.</p>
+<p>The failure capture <code>client/MPBT3025andGILS/GILS/gilslog2.txt</code> gets an HTML
+response with “User ticket data not found,” then exits without a <code>STARTGAME</code>
+record. Combined with manual page 5, which puts member-name/password login on
+EA.com before <strong>Play</strong>, this confirms that GILS connected the authenticated web
+flow to the game but was not itself the password-entry screen. It also shows
+that EA's web launch service and the separate Aries game connection were two
+parts of startup; the EA HTTP heartbeat is not a Solaris presence message.</p>
+<p>An isolated local test on port 15011 appended <code>user=ProbeIdentity</code> after the
+direct <code>aol:</code> connection string. Aries still sent both account-name slots as
+<code>unknown</code>; the extra text was folded into the trailing connection argument.
+This is not a valid way to set the account identity. The test client received
+the ordinary bootstrap/configuration exchange and sent no Solaris join; that
+test server and client were stopped afterward. The original listeners and game
+were left untouched. A local account/handle mapping may still be useful for
+our emulator, but the historical logs do not disclose the ticket validation
+or identity-claim wire format, so the <code>local-dev</code> path must not be presented as
+EA authentication.</p>
+<h3>Callsign-safe two-client chat relay (2026-10-20)</h3>
+<p>The <code>0x08 BTCHAT_MSG_PDU</code> serializer writes its sender identifier as a
+length-prefixed string at body offset 7, then writes <code>m_chatType</code> as the final
+byte (<code>BT3025.exe:0x510280</code> and <code>0x529fe0</code>). The new protocol fixture matches
+the live Subvoltic <code>test</code>/All packet byte-for-byte. The server now replaces
+that sender field with the callsign associated with the connected pilot before
+echoing or relaying the message, so a client cannot make the other player's
+Communications pane attribute a message to a different callsign. The message
+text and channel byte are preserved.</p>
+<p>The two-client server integration now uses client-shaped chat PDUs. It joins
+AlphaPilot and BetaPilot to Solaris, checks both clients receive the other
+pilot's call sign, verifies All in both directions, verifies the server
+corrects a spoofed sender field, and checks that unassigned cadets do not
+receive House chat. Separate routing tests cover same-House delivery and
+Team chat within one mission-room lance, while excluding opposing seats,
+observers, and other rooms. The latter remains a model-level test because the
+legacy client still never leaves the map. The integration test also reads both
+chat recipients concurrently to avoid ordering deadlocks in its in-memory
+transport. <code>go test -count=1 ./...</code> passes.</p>
+<p><code>scripts/summarize-trace.py</code> now labels <code>0x08</code> events and reports the
+embedded sender callsign and channel. Running it against both preserved
+two-client chat traces shows BetaPilot's live All and House packets and confirms
+neither session sent <code>0xad</code> or received <code>0x97</code> during those map-only tests.</p>
+<p>This verifies server-side two-session presence and chat routing, not a live
+client Mission Room. The latest live client evidence remains the 15:15 map
+trial above: the call-sign roster updated, All and House displayed, but no
+<code>0xad REQUEST_LOBBY_ROOMS</code> followed the Solaris <code>0x91 JOIN_PLANET</code>. Do not
+claim that two clients have entered a city or mission lobby until a live screen
+transition is captured.</p>
+<h3>Two-client roster order, live chat, and Solaris 1.23 reference (2026-10-21)</h3>
+<p>An isolated server on port 15011 ran without VCR or planet-state probe flags.
+Subvoltic and BetaPilot connected from separate Wine prefixes so both 800x600
+game windows remained visible. Each joined Solaris once. Both screens stayed
+on the map and showed only the other pilot in <strong>MechWarriors on Planet</strong> (count
+1). The second-join traces show the server sent each joining client the
+existing pilot's <code>0x3c PLAYER_UPDATE</code>, then <code>0x94 OCCUPANT_UPDATE</code>, then its own
+<code>0x2b OCCUPANT_ARRIVED</code>. The existing client received the new peer's <code>0x3c</code>
+and <code>0x94</code>, followed by an experimental repeat of its own <code>0x2b</code>. That final
+self-arrival did not restore the self row. A second trial sent an extra <code>0x94</code>
+for the local pilot after the peer update; it also left the map roster at one
+peer. That self-update experiment was removed as well. The earlier all-<code>0x2b</code>
+trial also failed to add the peer. Do not treat these singleton updates as a
+complete planet roster; the correct multi-entry map-roster message remains
+unknown. Neither client sent <code>0xad</code> or received <code>0x97</code>.</p>
+<p>The settled map captures show the territory fills in faction colors on both
+clients. The black fill seen in an earlier immediate post-join capture did not
+recur in this run.</p>
+<p>Inspection of both captures confirms the <strong>MechWarriors on Planet</strong> count is
+one on each client and the single row is the other pilot; neither local pilot
+appears in its own list. The earlier extra-self <code>0x94</code> run also showed only the
+peer after a peer update. The stable traces do include each joining pilot's
+own <code>0x2b OCCUPANT_ARRIVED</code>, so replaying that same singleton message is not a
+complete roster refresh. The default <code>0xa8</code> snapshot in this run had a 2,067-byte
+body with 121 records, generated from the server's seeded world state; this
+was not a VCR-derived payload or a planet-state probe flag.</p>
+<p>The preserved Player's Guide says that a cadet who clicks <strong>Go To Planet</strong>
+after Pilot Training should appear in a Solaris city lobby (pages 9–10). The
+two live screens remained on the Inner Sphere map instead. This distinguishes
+the missing city-lobby transition from the later strategic-sector and staging
+area flows. The 1996 Solaris 1.23 GitHub reference remains useful for its
+separate in-room combat protocol, but provides no BT3025 city-lobby handshake.</p>
+<p>Live chat was exercised from both clients. All (<code>0x00</code>) appeared on both
+Communications panes, attributed to <code>BetaPilot</code> and <code>Subvoltic</code> respectively.
+House (<code>0x02</code>) messages from unassigned cadets appeared only for the sender,
+matching the server's same-nonempty-House filter. Team is unavailable on this
+map screen; its routing remains model-level until a Mission Room can be
+reached. Captures are in <code>client/.runtime/captures/</code> with the names
+<code>solaris-beta-chat-all-20261021.png</code>,
+<code>solaris-subvoltic-chat-reply-20261021.png</code>,
+<code>solaris-beta-chat-house-20261021.png</code>, and
+<code>solaris-subvoltic-chat-house-20261021.png</code>.</p>
+<p>The requested earlier-version reference is cloned at
+<code>references/solaris-protocol-reference/</code> from
+<a href="https://github.com/RazorWing/solaris"><code>RazorWing/solaris</code></a>, revision
+<code>bcf5913d518af7ca604535ff8572d280350c86e0</code>. Its README identifies the target
+as Multiplayer BattleTech: Solaris 1.23 and calls the server a packet/command
+prototype. The Python server documents a COMMEG32 <code>0x1e</code> handshake and in-room
+combat commands such as room initialization; it does not describe the 3025
+Aries shell's planet join or <code>0xad</code> lobby handoff. The clone has no license
+file, so keep it as a local protocol reference and do not copy its code into
+the emulator without resolving reuse terms.</p>
+<p>The two-player occupant integration assertions now match the packets that
+remain after removing the ineffective self-refresh. <code>gofmt</code> and
+<code>go test -count=1 ./...</code> pass. No populated <code>0x97</code> was sent.</p>
+<p>The trace summarizer now labels the generic occupant-arrived/departed and
+update-occupants messages, and extracts the call sign from recovered
+<code>BTPlayerInfo</code> records in <code>0x2b</code>, <code>0x2c</code>, <code>0x3c</code>, and <code>0x94</code>. It was syntax
+checked and run over both preserved stable traces; it shows the joiner's own
+<code>0x2b</code> and the peer's <code>0x94</code> by call sign, while neither trace contains
+<code>0xad</code>.</p>
+<p><code>client/scripts/capture-test-evidence.sh</code> now accepts an optional fourth
+argument containing a specific 800x600 BT3025 window ID. This keeps the
+single-window default safe while allowing separate evidence captures when two
+clients are open. The current visible windows were captured without input or
+restart as <code>client/.runtime/captures/solaris-current-beta-20261021.png</code> and
+<code>client/.runtime/captures/solaris-current-subvoltic-20261021.png</code>. Both are
+still on the map, show the other pilot only (count 1), and have no <code>0xad</code> or
+<code>0x97</code> in their associated traces.</p>
+<h3>Nonzero player-ID trial and pause handoff (2026-10-21)</h3>
+<p>An isolated server on port 15011 was used to test whether the missing self row
+was caused by the current zero-valued <code>m_playerID</code>. No VCR planet-state flags
+were used, and no populated <code>0x97</code> was sent. The two trace files are
+<code>runtime/traces/test-15011-occupant-only/session-1792606831417930696.log</code>
+and
+<code>runtime/traces/test-15011-occupant-only/session-1792607012689036049.log</code>.
+They show Solaris <code>0x91</code> joins followed by <code>0x94</code> and <code>0x2b</code> records carrying
+<code>m_playerID=1</code> for Subvoltic and <code>m_playerID=2</code> for BetaPilot. The map roster
+still showed zero players. BetaPilot's client displayed a Microsoft Visual C++
+runtime error for abnormal program termination; the first client process also
+ended after its join. Captures are
+<code>client/.runtime/captures/occupant-only-a-after-join.png</code>,
+<code>client/.runtime/captures/occupant-only-b-after-join.png</code>, and
+<code>client/.runtime/captures/occupant-only-b-runtime-dialog.png</code>. The two traces
+contain neither <code>0xad REQUEST_LOBBY_ROOMS</code> nor <code>0x97 READY_ROOM_LIST</code>.</p>
+<p>That result rules out sending arbitrary locally assigned IDs in these
+singleton occupant records. The code and integration expectations have been
+returned to the last non-crashing format: outbound player/occupant records use
+ID 0, and a planet join sends the joining client's <code>0x94</code>, existing peers'
+<code>0x3c</code> and <code>0x94</code>, then the joining client's <code>0x2b</code>; connected peers receive
+the new client's <code>0x3c</code> and <code>0x94</code>. The <code>0x88</code> character-creation reply remains
+the only immediate post-create response; the extra <code>0x3c</code>/<code>0x3d</code> refresh is
+still omitted. Persistent pilot IDs and the <code>WithID</code> serialization helpers
+remain in the local model/code, but must not be put on the wire until a real
+account/player identity and the client's accepted roster semantics are known.
+The related bootstrap and two-client sequence tests were realigned with this
+format. <code>gofmt</code> and <code>go test -count=1 ./...</code> pass.</p>
+<p>The ordinary world-derived <code>0xa8</code> owner snapshot continues to color the map's
+territory fills by faction. The unresolved blockers are the Aries/GILS account
+identity context and the client-accepted way to send a complete planet roster
+and trigger the city-lobby transition. Direct <code>aol:</code> startup still identifies
+the account as <code>unknown</code>; guessed numeric IDs crash this client, and the
+singleton <code>0x94</code>/<code>0x2b</code> join sequence leaves it on the map. Do not claim a
+two-player lobby or battle is reachable yet. Next work should inspect the
+client's account-name/identity path and decode a roster/transition PDU from
+authoritative client evidence before another live experiment. Keep testing on
+an isolated listener with at most the two existing client prefixes; do not
+retry guessed IDs, VCR state, or a populated <code>0x97</code>.</p>
+<p>The pause-turn source edits are in <code>src/server/main.go</code> and
+<code>src/server/main_test.go</code>; the handoff updates are in this document.
+Earlier implementation and evidence (faction-colored map ownership, callsign
+chat relay/channel routing, trace decoding, and the Solaris 1.23 reference)
+are documented in the preceding sections above.</p>
+<p>The isolated 15011 server and its test clients were stopped for this pause.
+No other listener or game process was restarted as part of the cleanup.</p>
+<h3>String PlayerID recovery and room receive path (2026-10-21, resumed)</h3>
+<p>The earlier <code>WithID(..., uint32)</code> implementation was incorrect. The base
+player serializer at <code>0x4fce40</code> sends the object at <code>+0x04</code> through the virtual
+object writer <code>0x4f7770</code>. That object's vtable is <code>0x5914e4</code>; its writer
+<code>0x4f7ff0</code> calls the string writer <code>0x4f7710</code>, and decoder <code>0x4f8010</code> calls
+the string decoder <code>0x4ed520</code>. The debug formatter at <code>0x4f8030</code> labels this
+string <code>m_ariesID</code>. Thus the former four zero bytes were an empty string
+length. Writing numeric 1 or 2 there made the client consume unrelated bytes
+as identity text and misaligned the rest of the record. This explains the
+runtime failures without requiring real EA credentials.</p>
+<p>The <code>0x94</code> receive dispatch at <code>0x4de77b</code> calls <code>0x500290</code> to remove the old
+occupant by PlayerID and <code>0x500150</code> to insert the replacement. Sending the same
+empty identity for all pilots therefore replaced the previous row. In
+contrast, <code>0x3c</code> handler <code>0x4df150</code> calls <code>0x4f4000</code>, which replaces the
+receiving client's own player record. The old peer <code>0x3c</code> broadcasts were
+incorrect even though their callsigns appeared to fix the visible peer row.</p>
+<p><code>internal/protocol/pilot.go</code> now writes string IDs and uses each pilot's
+callsign as a local identity for <code>For</code> helpers, keeping the bootstrap ID empty.
+The explicit <code>WithID</code> helpers accept strings. <code>cmd/server/main.go</code> broadcasts
+only occupant messages for peers and does not replace the local player with
+peer data. The numeric persisted IDs remain internal database identifiers.
+Protocol regression tests check the actual string length/data and following
+callsign alignment; the two-client integration and hub assertions forbid peer
+player updates. The full Go test suite passes. The trace summarizer now parses
+variable-length PlayerID strings before reading the callsign.</p>
+<p>On isolated port 15011, the corrected server sent two distinct <code>0x94</code> records
+to BetaPilot and its own <code>0x2b</code>. A live capture shows count 2 and both
+<strong>Cadet BetaPilot</strong> and <strong>Cadet Subvoltic</strong>:
+<code>client/.runtime/captures/string-id-b-two-players.png</code>. The trace is
+<code>runtime/traces/string-player-id/session-1792608043213374200.log</code>;
+Subvoltic's associated trace is <code>session-1792607938701147789.log</code>. There is
+still no <code>0xad</code> request or lobby transition. Before the reciprocal screenshot,
+the server and both client command sessions terminated together with exit
+status 143; the cause is not established and no runtime-error dialog was
+observed. A repeat uses detached processes and the existing two prefixes.</p>
+<p>The actual room-change receive path is also identified: generic wire dispatch
+<code>0x4f3cf0</code> maps <code>0x3e UPDATE_ROOM</code> through virtual slot <code>+0x14</code> to
+<code>0x4df1d0</code>, which calls <code>0x4f3f60</code> to replace the current room, store the
+reason code at connection <code>+0x13c</code>, optionally clear occupants, and emit event
+9. Descriptor <code>0x592d60</code>, encoder <code>0x505f90</code>, and decoder <code>0x505f50</code> confirm
+the body is uint32 reason, bool occupant-list-follows, then nested BTRoomInfo.
+RoomID is itself a composite object: vtable <code>0x591508</code>, writer <code>0x4f8710</code>
+emits uint32 room number followed by a host-name string; decoder <code>0x4f8740</code>
+confirms both. BTRoomInfo's planet at <code>+0xa4</code> is a numeric wrapper whose value
+is <code>+0xa8</code>, not a string. The complete room serializer is <code>0x5018b0</code> plus
+<code>0x51f1f0</code>. These types must be respected before any room-update experiment.</p>
+<p>The detached repeat confirms the roster fix in both directions. Captures
+<code>client/.runtime/captures/string-id-detached-a-two-players.png</code> and
+<code>string-id-detached-b-two-players.png</code> each show count 2 and both callsigns.
+Stopping only BetaPilot's prefix caused a string-ID <code>0x2c</code> departure; the
+remaining Subvoltic client correctly retained its self row and changed to
+count 1 (<code>string-id-detached-a-peer-left.png</code>). Traces are under
+<code>runtime/traces/string-player-id-detached/</code>. The new helper
+<code>client/scripts/advance-solaris-client.py</code> advances a specified existing game
+window and callsign through recognized startup screens, clicks Go To Planet
+once, and waits for <code>0x91</code> in the selected trace. It supports either of the
+two existing client windows and never launches additional clients.</p>
+<p>The room-update type-1 trial succeeded. Isolated server command:
+<code>runtime/mpbt3025-room-update -listen 127.0.0.1:15011 -world runtime/world-test-15011-string-id.json -trace-dir runtime/traces/room-update-type1 -experimental-planet-room-type=1</code>.
+Trace <code>runtime/traces/room-update-type1/session-1792610558991047031.log</code>
+shows the Solaris <code>0x91</code>, then an 89-byte <code>0x3e</code> body (reason 1, occupant list
+follows true, RoomID number 121001/host local, name Solaris, room type 1,
+planet 121), then string-ID <code>0x94</code> and <code>0x2b</code>. The screen changed to
+<strong>Staging Area / Missions on Solaris</strong> and Communications says <strong>You are on
+Solaris</strong>. Capture: <code>client/.runtime/captures/room-update-type1-a-live.png</code>.
+The client stayed connected and sent its heartbeat. The mission list is empty;
+no <code>0xad</code> or <code>0x97</code> appeared. An authenticated EA login is therefore not needed
+to produce this local lobby transition.</p>
+<p>The room-list cache receive handler <code>0x4dfd00</code> handles generic <code>0x27</code> and
+merges full RoomInfo records, then emits event 15. Its serializer at
+<code>0x509f70</code> writes result uint32, reason string, count, then each RoomInfo.
+The next controlled trial supplies the existing city model's cadet missions
+through this recovered generic list. It sends no populated <code>0x97</code>.</p>
+<h3>Staging missions and first mission join (2026-10-21)</h3>
+<p>Generic 0x27 is accepted but does not populate the staging mission cache.
+The staging view reads connection +0x1c0. <code>0x99 READY_ROOM_ADDED</code> inserts into
+that cache: full BTRoomInfo followed by a counted CombatSeatLite map
+(writer 0x4e65d0, decoder 0x4e66d0). The decoder constructs <strong>CombatSeatLite</strong>
+at 0x516880, not full CombatSeatInfo. Each lite record is u8 seat, u8 team,
+string callsign, u32 house, u32 rank, u8 badge (writer 0x516920).</p>
+<p>Live proof: <code>client/.runtime/captures/room-added-a-after-join.png</code> displays
+Cadet Mission 1–3 with 0/4 on each lance and an enabled Enter Mission button.
+Trace: <code>runtime/traces/room-added/session-1792611086469906261.log</code>.
+Clicking Enter Mission sent 0x23 JOIN_ROOM, body
+<code>00000001000000056c6f63616c00000000</code>: room number 1, host &quot;local&quot;, empty password.
+No populated 0x97 was sent.</p>
+<p>Implemented JOIN_ROOM parser and atomic Store.JoinAvailableRoom, assigning the
+least populated lance. The first live join succeeded in world state and the
+native screen switched to <strong>Mission Room</strong>, Communications &quot;You are in Cadet
+Mission 1&quot;, roster &quot;MechWarriors in Mission&quot; with Subvoltic. Screenshot
+<code>client/.runtime/captures/mission-join-a-stable.png</code>; trace directory
+<code>runtime/traces/mission-join/</code>, latest session 1792611614517017136.
+Own 0x3c with a correctly encoded string PlayerID is accepted here; earlier
+numeric-ID crashes were malformed string lengths, not proof of missing EA login.
+The initial mission screen has no lance rows until CombatInfo is supplied.</p>
+<p>Work in progress: <code>0x9e CURRENT_COMBAT</code> serializes CombatInfo (0x514ff0),
+composite RoomID, u32 planet/map/climate/terrainSeed, u8 mech visibility,
+bool sanctioned, bool mechVisible, then counted full CombatSeatInfo map
+(0x42e890/0x42e990). Full seat writer 0x517150 adds weightClass, string
+occupant PlayerID, u32 MechID, state byte, score fields to the lite base.
+Codec implemented; live validation pending. Seat enum and valid mech/map IDs
+still need checking. Do not claim battle launch is working.</p>
+<p>Current isolated server: <code>runtime/mpbt3025-combat-info</code>, PID 201687,
+127.0.0.1:15011, world <code>runtime/world-test-15011-string-id.json</code>, traces
+<code>runtime/traces/combat-info</code>, log <code>runtime/logs/combat-info.log</code>,
+<code>-experimental-planet-room-type=1</code>. One client A in existing arrival-a prefix;
+B stopped. Unrelated listeners 15004 and 15008 untouched. Latest all-Go tests
+passed after joining/CombatInfo changes. Default server path still needs
+promotion of verified staging behavior after mission validation.</p>
+<aside class="file-note" id="local-artifacts">Some links in this historical note point to local client captures or runtime logs that are not included in the published project.</aside></article></main>
+  <footer class="site-footer">
+    <p><a href="../../project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

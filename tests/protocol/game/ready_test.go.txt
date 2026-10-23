@@ -1,0 +1,67 @@
+package protocol
+
+import "testing"
+
+func TestParseReadyStateChangeUsesCapturedTypeTwoRequest(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{name: "ready", body: []byte{2, 0, 0, 0, 0, 0, 1}, want: true},
+		{name: "not ready", body: []byte{2, 0, 0, 0, 0, 0, 0}, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ParseReadyStateChange(test.body)
+			if err != nil || got != test.want {
+				t.Fatalf("ParseReadyStateChange(%x) = %t, %v; want %t", test.body, got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestParseReadyStateChangeRejectsRoomEntryAndMalformedRequests(t *testing.T) {
+	for _, body := range [][]byte{
+		{1, 0, 0, 0, 0, 8, 0}, // automatic request sent on room entry
+		{2, 0, 0, 0, 0, 0, 2},
+		{2, 0, 0, 0, 1, 0, 1},
+		{2, 0, 0, 0, 0, 1},
+	} {
+		if _, err := ParseReadyStateChange(body); err == nil {
+			t.Errorf("ParseReadyStateChange(%x) unexpectedly succeeded", body)
+		}
+	}
+}
+
+func TestParseSeatOptionsRequestPreservesNativeFields(t *testing.T) {
+	for _, tc := range []struct {
+		body []byte
+		want SeatOptionsRequest
+	}{
+		{[]byte{1, 0, 0, 0, 0, 8, 0}, SeatOptionsRequest{Option: SeatOptionMech, MechID: 8}},
+		{[]byte{2, 0, 0, 0, 0, 0, 1}, SeatOptionsRequest{Option: SeatOptionState, State: 1}},
+		{[]byte{0, 5, 0, 0, 0, 0, 0}, SeatOptionsRequest{Option: SeatOptionMove, Seat: 5}},
+		{[]byte{1, 0, 1, 2, 3, 4, 0}, SeatOptionsRequest{Option: SeatOptionMech, MechID: 0x01020304}},
+	} {
+		got, err := ParseSeatOptionsRequest(tc.body)
+		if err != nil || got != tc.want {
+			t.Fatalf("ParseSeatOptionsRequest(%x) = %+v, %v; want %+v", tc.body, got, err, tc.want)
+		}
+	}
+	for _, body := range [][]byte{{1, 0}, {3, 0, 0, 0, 0, 0, 0}} {
+		if _, err := ParseSeatOptionsRequest(body); err == nil {
+			t.Fatalf("accepted malformed options %x", body)
+		}
+	}
+}
+
+func TestCountdownTimerNativeFixture(t *testing.T) {
+	p := CountdownTimer(60, CountdownAutoLaunch)
+	if p.ID != 0xa9 || string(p.Body) != string([]byte{0, 0, 0, 60, 3}) {
+		t.Fatalf("countdown = %#v", p)
+	}
+	p = CountdownTimer(0, CountdownStopped)
+	if string(p.Body) != string([]byte{0, 0, 0, 0, 0}) {
+		t.Fatalf("stopped countdown = %#v", p)
+	}
+}

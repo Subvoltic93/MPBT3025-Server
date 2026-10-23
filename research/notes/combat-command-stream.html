@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Native combat command stream (0x81) — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>Native combat command stream (0x81)</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="../../index.html">Status</a>
+<a href="../../readme.html">README</a>
+<a href="../../protocol.html">Protocol</a>
+<a href="../../research.html">Research</a>
+<a href="../../roadmap.html">Roadmap</a>
+<a href="../../project-files.html" class="current" aria-current="page">Project files</a></nav>
+  <main><article class="document"><h1>Native combat command stream (0x81)</h1>
+<p>Historical local paths in this document are relative to the original workspace root. Original client assets, client-derived research, and visual evidence remain in the separate workspace-root <code>client/</code> directory and are not included in this server project.</p>
+<p>Static and executable-fixture evidence from the supplied September 2001
+BTCombat.dll; preferred image base 0x69000000. The server now encodes the
+command envelope and a controlled stock COM-4D setup; live loading remains
+to be verified.</p>
+<p><code>ReceiveCombatData</code> (0x6905cd60) forwards the PDU body and length to
+0x690755c0. The bounded stream is processed by 0x69075060 before dispatch.
+The command type reader (0x69074b30) subtracts 0x21 from one wire byte and
+looks up the result in the factory registry at 0x690d4b50. Parsed commands
+are queued through 0x690753b0. Command application uses the visitor table
+at 0x6908e6a8.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Registry key</th>
+<th>Encoded type byte</th>
+<th>Registration</th>
+<th>Visitor offset</th>
+<th>Apply callback</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NewMechCommand</td>
+<td>0x40</td>
+<td>0x61 (<code>a</code>)</td>
+<td>0x6906f040</td>
+<td>0x34</td>
+<td>0x69073610</td>
+</tr>
+<tr>
+<td>Ready for combat</td>
+<td>0x3e</td>
+<td>0x5f (<code>_</code>)</td>
+<td>0x69072440</td>
+<td>0x44</td>
+<td>0x69073a00</td>
+</tr>
+<tr>
+<td>TitleCommand</td>
+<td>0x48</td>
+<td>0x69 (<code>i</code>)</td>
+<td>0x69072d40</td>
+<td>0x48</td>
+<td>0x69073a10</td>
+</tr>
+</tbody>
+</table>
+<p>The command-to-visitor trampolines are 0x6906f1a0, 0x69072540, and
+0x69072e40 respectively. The callbacks provide independent semantic
+confirmation: NewMechCommand calls exported <code>FillMech</code> at 0x690411a0;
+TitleCommand calls <code>FillReality</code> at 0x69057a60, which ends by calling
+<code>PrepareForCombat</code> at 0x69056160. The ready callback calls exported
+<code>ReadyForCombat</code> at 0x690570e0, including <code>GraphicsManager::EnterCombat</code>.
+Thus the stream has explicit preparation and entry commands beyond the
+shell-level 0x80 message. These are concrete missing steps to test when
+resolving the loading splash; full initialization remains unverified.</p>
+<h2>Encoding details recovered so far</h2>
+<ul>
+<li>Small values and command types use one character with bias 0x21.</li>
+<li>Multi-character integers use base85, also biased by 0x21. Reader
+0x6906a180 multiplies by 0x55 for each following digit; its width argument
+1..4 selects 2..5 encoded characters. Do not serialize these as raw u32.</li>
+<li>The two-/three-width signed helpers (0x69074c90/0x69074cc0) subtract
+fixed biases after decoding. Other helpers decode bounded unsigned values.</li>
+<li>Preprocessing removes outer framing (0x690751c0), checks/removes a
+three-character checksum (0x69075110), then removes an inner prefix
+(0x690750b0). The matching serializer inserts 0x21 as the inner prefix
+and ESC framing around the checksummed stream. Executable native fixtures
+now confirm both checksum directions and terminal NUL semantics (below).</li>
+<li>TitleCommand decoder is 0x69072c90. It reads a string, two bytes, four
+bounded integers, then several one-character values. These member
+offsets are relative to its serialization subobject; account for the
+subobject offset before matching <code>FillReality</code> accesses.</li>
+</ul>
+<p>The ready factory decoder at 0x69072470 constructs through 0x690722d0,
+which invokes the no-op decoder 0x6906b7f0. Its payload therefore appears
+empty after the type byte; the native writer fixture confirms exactly <code>_</code>.</p>
+<p>Native fixtures now cover Title, NewMech, Ready, and stock COM-4D equipment.
+A controlled setup trial is behind <code>-experimental-combat-init</code>; it is disabled
+by default and has no movement/damage simulation yet.</p>
+<h2>Stream checksum and title layout follow-up</h2>
+<p>The checksum routine at 0x69075200 is the same 19-bit LFSR described in
+<code>../../../../MPBT3025/references/solaris-protocol-reference/solaris_server.py</code> (which documents the
+related Solaris COMBAT stream). Its seed selection is directly visible in the
+BTCombat DLL: when the stream context flag at <code>this+4</code> is clear, the seed is
+0xC4545 (804165); when set, the 32-bit addition wraps to 0xA5C45 (678981).
+The reference identifies 678981 as the server-to-client COMBAT checksum seed.
+Each checksum is encoded as three base-85 digits after the inner-prefix byte
+and command payload. The title command decoder reads a length-prefixed string,
+two one-byte fields, four two-byte-width base-85 integers, one one-byte field,
+three more one-byte fields, and a final one-byte field. Its serialization
+subobject fields sit at offsets 0x2c and 0x3c..0x54. <code>FillReality</code> consumes
+these as map/reality setup values, and then calls <code>PrepareForCombat</code>.</p>
+<p>This is enough to construct a byte-level envelope, but the semantic values for
+the TitleCommand and the complete NewMechCommand remain unverified. Do not
+send a guessed 0x81 stream yet: a checksum-valid packet can still install an
+invalid terrain or mech state and crash the native client. Next match the
+TitleCommand fields against the known Solaris CombatInfo and recover the
+NewMechCommand decoder/model fields before the first controlled stream trial.</p>
+<h2>Executable native fixtures and first setup trial</h2>
+<p><code>scripts/native-combat-fixture.py</code> maps the supplied DLL's PE sections
+into an isolated Linux i386 executable at their original addresses. It calls
+the original command writers (Title0x69072be0, NewMech0x6906e830,
+Ready0x6906c600), prefix/checksum/framing routines, and receive preprocessing.
+It substitutes only a bounded raw-buffer write method and memmove; it does not
+initialize a DLL, connect to a server, attach a debugger, or modify a client.
+The DLL SHA256 is pinned to prevent applying offsets to another build.
+Generated JSON fixtures in <code>data/test-fixtures/combat-native-*</code>
+record original bytes and both direction checksum results. Native preprocessing
+must recover the exact original command before a fixture is accepted.</p>
+<p>Example: the native ready command is5f, server frame1b215f41252f1b. The wire
+payload is u32 big-endian length followed by that frame <strong>and its NUL</strong>:
+000000081b215f41252f1b00. EXE writer0x520130 and handler0x4d8610 show that the
+counted length is forwarded unchanged to ReceiveCombatData. The receive
+preprocessor removes three bytes from the framing, accounting for the NUL.
+Server checksum seed678981 and client seed804165 now have native fixtures.
+<code>CombatData</code> matches all native frames; Title/stock-COM-4D command encoders
+match original command writers. All Go packages passed after integration.</p>
+<p>Recovered whole-object Title fields: +0x40 local combat entity ID; +0x41
+climate (0 Desert,1 Temperate,2 Tropic,3 Arctic); +0x44 terrain number;
++0x48 gravity in hundredths, converted to negative acceleration; +0x4c ground
+friction percent; +0x50 air pressure; +0x54 heat penalty. Exported getter
+functions independently establish the physics meanings. FakeStart0x6905c350
+sets gravity980, friction100, pressure100, heat0. The +0x55 field is the EXACT Mech count. FakeStart sends its last Mech
+through a shared tail call; an earlier player-count+1 interpretation was wrong.
+The setup uses +0x55=len(players), +0x56=2, +0x57=0, +0x58=5.
+AddNewMech compares created count (+0xa4) with declared count (+0x108);
+only equality advances Reality state (+0x140) from 1 to 2.</p>
+<p>FakeACat0x6905aff0 has an explicit nativeMechID8 branch0x6905b696 for COM-4D /
+Commando. It supplies the stock characteristics, eleven armor records, three
+weapon records, one ammunition record, and the thirty shared component
+records at0x6905c096. These are now encoded and checked against the original
+NewMech writer, including nonempty lists. VC6 vector objects have allocator
+padding then begin/end/capacity pointers; account for the extra four bytes.
+A native writer quirk at0x6906e8be serializes the command type0x40 into the
+first numeric field instead of whole-object+0x90. The decoder stores it there,
+but FillMech does not read that field; the encoder follows the native fixture.</p>
+<p>Current controlled trial uses only starter COM-4Ds, compact combat IDs0..N-1,
+combat teams0/1 and recipient-specific local ID. Title and Mechs are sent
+first; Ready MUST be deferred until PreCombatInit initializes the HUD. Sending
+Ready immediately caused a native K2D.dll NULL+0x178 crash through
+ReadyForCombat / CHUDBogie::AddBogie. Correct count plus deferred Ready
+rendered BOTH complete desert cockpits and weapons HUDs in the stage3 trial.
+Screenshots: client/.runtime/captures/native3-after-setup-{a,b}.png.</p>
+<p>The opt-in server now waits for a checksum-validated 37-byte native position
+command (wire 0x27) from EVERY launched pilot before broadcasting Ready once.
+These commands begin after PreCombatInit reaches state3. The barrier has a
+regression covering early release, other-room input, corrupt frames and duplicate
+release. Live barrier verification PASSED: both setup packets at13:55:54, both
+prepared and Ready broadcast at13:55:58. Captures
+client/.runtime/captures/barrier-released-{a,b}.png show Stand By gone and
+active match clocks on both clients, with no native crash. The shell continues using
+one-based seats and teams1/2. Movement relay and combat simulation remain
+unimplemented; cockpit rendering alone does not establish playable combat.</p>
+<p>Native position relay: client command wire0x27 (key6, writer0x6906f700)
+contains signedX4, signedY4, unsigned3, seven signed3 and unsigned4 fields.
+Server position wire0x62 (key0x41, writer0x6906f350) contains entityID1,
+then signedX4, signedY4, unsigned3 and the first four signed3 fields.
+scripts/native-combat-fixture.py now has client-position and position
+kinds proving the exact shared wire bytes. CombatPeerPosition validates the
+client command and inserts the sender entity from the launched room roster.
+Live relay trial at14:05:11 passed: both clients stayed in combat and peer
+indicator changed when Subvoltic moved forward at20kph. See the Solaris session
+checkpoint for process IDs, logs, traces and captures. Damage and fire handling
+remain unimplemented.</p>
+<p>Weapon event: a native Left Alt shot is batched after position in the same
+client0x81 frame. The second command is36-byte wire0x2b (client key0x0a,
+writer0x69070c20). Server key0x44, writer0x69070810, serializes36-byte
+wire0x65: key, authenticated shooterID, client fire bytes[1:35]. The client's
+last fire byte is omitted. Native executable fixtures for fire and server-fire
+confirm exact bytes. The server now relays this command to peers in the active
+room after the position packet. In the14:13:05 live trial, a shot generated
+the combined client frame and a server fire packet to the peer without a
+native crash. The peer effect and damage were not visually confirmed.
+Receiver visitor0x69073770 includes a local-target branch; further work must
+validate targets and handle damage/results authoritatively.</p>
+</article></main>
+  <footer class="site-footer">
+    <p><a href="../../project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

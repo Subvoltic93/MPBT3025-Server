@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Protocol and Server Operation — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>Protocol and Server Operation</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="index.html">Status</a>
+<a href="readme.html">README</a>
+<a href="protocol.html" class="current" aria-current="page">Protocol</a>
+<a href="research.html">Research</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="project-files.html">Project files</a></nav>
+  <main><article class="document"><h1>Protocol and Server Operation</h1>
+<p>This document describes the current Go server implementation. It covers both network addresses and message addresses (PDU IDs). A numeric ID listed below is handled only in the direction and context stated.</p>
+<h2>Listener addresses</h2>
+<p>The server speaks TCP with Aries framing. It does not serve HTTP.</p>
+<table>
+<thead>
+<tr>
+<th>Address</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>127.0.0.1:15000</code></td>
+<td>Default local bootstrap listener (<code>-listen</code>). It accepts the client’s primary connection and handles lobby, planet, room, and combat traffic.</td>
+</tr>
+<tr>
+<td><code>127.0.0.1:15001</code></td>
+<td>Optional secondary Aries listener (<code>-world-listen</code>). It is started only with <code>-planet-redirect</code>; a successful planet join can be redirected there as an experiment.</td>
+</tr>
+<tr>
+<td><code>127.0.0.1:15011</code></td>
+<td>Development trial address used for the current isolated test instance. It is selected explicitly with <code>-listen 127.0.0.1:15011</code>; it is not a second default service.</td>
+</tr>
+</tbody>
+</table>
+<p>All default listeners bind to loopback, so they accept connections from this machine. Use <code>-listen</code> or <code>-world-listen</code> to change a bind address. Binding to a non-loopback interface makes the service reachable on that interface.</p>
+<p>The persistent campaign file defaults to <code>runtime/world.json</code> (<code>-world</code>). Text packet traces default to <code>runtime/traces/</code> (<code>-trace-dir</code>); each connection creates a <code>session-&lt;timestamp&gt;.log</code> file. The current isolated trial uses <code>runtime/world-test-15011-combat-fire.json</code> and <code>runtime/traces/native-combat-fire/</code>.</p>
+<h2>Aries transport</h2>
+<p>Each TCP frame begins with 12 bytes:</p>
+<table>
+<thead>
+<tr>
+<th>Offset</th>
+<th style="text-align:right">Size</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td style="text-align:right">4</td>
+<td>Message type, little-endian</td>
+</tr>
+<tr>
+<td>4</td>
+<td style="text-align:right">4</td>
+<td>Tag, little-endian</td>
+</tr>
+<tr>
+<td>8</td>
+<td style="text-align:right">4</td>
+<td>Payload length, little-endian</td>
+</tr>
+<tr>
+<td>12</td>
+<td style="text-align:right">length</td>
+<td>Payload, at most 1 MiB</td>
+</tr>
+</tbody>
+</table>
+<p>The server sends transport type <code>0x16</code> (<code>LOGIN_REQUEST</code>) after accepting a connection. A client <code>0x15</code> (<code>LOGIN</code>) receives the game host greeting inside a data frame. Type <code>0x00</code> is a data frame; type <code>0x03</code> is a redirect frame. Other transport types are logged as unimplemented.</p>
+<h2>Game PDU framing</h2>
+<p>A game PDU is carried in an Aries data-frame payload. Its six-byte header is big-endian: a 16-bit message ID followed by a 32-bit total PDU length, including the header. Multiple PDUs may be decoded from one data payload. The client buffer limit used by the server is <code>0x4000</code> bytes.</p>
+<p>For oversized messages the server emits <code>SPLIT_BUFFER_PDU</code> (<code>0x47</code>) wrappers containing a final-fragment byte, a 32-bit byte count, and a chunk of the original encoded PDU. The serializer shape is recovered; complete client-side reassembly behavior is still uncertain.</p>
+<h2>Current connection flow</h2>
+<ol>
+<li>A TCP connection receives <code>LOGIN_REQUEST</code>; a client <code>LOGIN</code> receives <code>HOST_ONLINE</code> (<code>0x1D</code>).</li>
+<li><code>CLIENT_ONLINE</code> (<code>0x09</code>) receives the local player record (<code>0x3C</code>), profile (<code>0x3D</code>), and an unsynchronized static-configuration update (<code>0x86</code>). The client’s <code>STATIC_CONFIG_RESPONSE</code> (<code>0xA4</code>) completes the sync exchange.</li>
+<li>Startup settings requests are answered with their default response forms. A <code>CREATE_CHARACTER</code> (<code>0x87</code>) request creates or loads the local pilot and receives the current zero-result completion form (<code>0x88</code>). The authentic success semantics of that response remain unconfirmed.</li>
+<li>A <code>JOIN_PLANET</code> (<code>0x91</code>) request changes the pilot’s planet location. Live connected occupants are announced with <code>OCCUPANT_UPDATE</code> (<code>0x94</code>) and arrival/departure messages (<code>0x2B</code>/<code>0x2C</code>). The server answers a rejected join with <code>JOIN_PLANET_FAILED</code> (<code>0x92</code>).</li>
+<li><code>LIST_ROOMS</code> (<code>0x26</code>) receives an empty <code>LIST_ROOMS_RESPONSE</code> (<code>0x27</code>). Solaris staging rooms are maintained from world state and, when enabled, sent as room-list/add/update/remove messages (<code>0x97</code>–<code>0x9A</code>). A mission join uses <code>JOIN_ROOM</code> (<code>0x23</code>); leaving can use <code>EXIT_ROOM</code> (<code>0x17</code>) or the client’s parent-city rejoin path.</li>
+<li><code>READY_STATE_CHANGE</code> (<code>0x8C</code>) requests update the selected Mech or readiness state. When the room is ready, the scheduler publishes a countdown and the clients enter combat together.</li>
+<li><code>COMBAT_DATA</code> (<code>0x81</code>) streams are parsed for supported native position and fire commands. Those commands are relayed to peers in the same active room. This is peer relay; the server does not currently calculate hits, damage, destruction, or match results.</li>
+</ol>
+<h2>Implemented message addresses</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">ID</th>
+<th>Name</th>
+<th>Current server use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right"><code>0x08</code></td>
+<td><code>CHAT_MESSAGE</code></td>
+<td>Relays supported All, Team, and House channels to matching live sessions. Team channel value 1 is inferred; House is 2 and All is 0.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x09</code></td>
+<td><code>CLIENT_ONLINE</code></td>
+<td>Starts player/profile/static-configuration bootstrap.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x17</code></td>
+<td><code>EXIT_ROOM</code></td>
+<td>Removes the pilot from the current mission and returns an acknowledgement form.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x1D</code></td>
+<td><code>HOST_ONLINE</code></td>
+<td>Server greeting after login.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x23</code></td>
+<td><code>JOIN_ROOM</code></td>
+<td>Joins a local Solaris mission or re-enters its parent staging room.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x26</code> / <code>0x27</code></td>
+<td><code>LIST_ROOMS</code> / response</td>
+<td>Returns the current empty global room list.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x2B</code> / <code>0x2C</code></td>
+<td>occupant arrived / departed</td>
+<td>Updates live occupant presence.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x31</code>, <code>0x33</code>, <code>0x35</code>, <code>0x37</code>, <code>0x43</code></td>
+<td>settings requests</td>
+<td>Receives the corresponding default-form setting response.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x3C</code> / <code>0x3D</code></td>
+<td>player / profile update</td>
+<td>Sends local pilot and profile records during bootstrap. Peer rosters use occupant messages instead.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x3E</code></td>
+<td>room update</td>
+<td>Optional recovered Solaris lobby room update, gated by <code>-experimental-planet-room-type=1</code> or <code>2</code>.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x47</code></td>
+<td>split buffer</td>
+<td>Wraps oversized outgoing game PDUs.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x81</code></td>
+<td><code>COMBAT_DATA</code></td>
+<td>Parses supported setup, position, and fire command streams; only the supported position/fire events are relayed.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x86</code> / <code>0xA4</code></td>
+<td>static configuration update / response</td>
+<td>Completes startup configuration synchronization.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x87</code> / <code>0x88</code></td>
+<td>create character / reply</td>
+<td>Handles a local call sign and returns the currently experimental zero-result completion form.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x8B</code></td>
+<td>combat configuration update</td>
+<td>Publishes current mission seat and combat configuration.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x8C</code> / <code>0x8E</code></td>
+<td>ready request / seat update</td>
+<td>Handles Mech selection and ready toggles; emits seat updates.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x90</code> / <code>0x91</code> / <code>0x92</code></td>
+<td>combat summary / join planet / join failure</td>
+<td><code>0x91</code> changes planet; <code>0x92</code> reports a rejected join. <code>0x90</code> is not used as a join reply.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x94</code></td>
+<td>occupant update</td>
+<td>Publishes pilot data for a live roster entry.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x97</code>–<code>0x9A</code></td>
+<td>ready-room list / added / update / removed</td>
+<td>Maintains optional Solaris staging-room lists.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0x9E</code> / <code>0xA9</code> / <code>0x80</code></td>
+<td>current combat / countdown / enter combat</td>
+<td>Sends mission state, launch timing, and combat entry.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0xA7</code> / <code>0xA8</code></td>
+<td>request / planet state list</td>
+<td>Answers the global map poll with current House ownership, unless an experimental probe is enabled.</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>0xAD</code></td>
+<td>request lobby rooms</td>
+<td>Sends the current empty auxiliary room list.</td>
+</tr>
+</tbody>
+</table>
+<p>Unknown game PDUs are ignored except for the recognized startup-setting request IDs, which receive default-form responses. This is a deliberately small local emulator, not a complete recreation of the legacy online service.</p>
+<h2>Room counts and sides</h2>
+<p>Live planet occupants are tracked by connected sessions, not by the saved pilot list. Mission occupancy and open seats come from the room’s actual seats, including AI seats. The Solaris room encoder places defender-seat values in the Alpha-facing field and attacker-seat values in the Beta-facing field, based on the current row-renderer observation.</p>
+<p>The user has reported that some room counts, displayed occupants, or team names may still be incorrect. Treat this area as under investigation until join, leave, disconnect, reconnect, and both-side assignment cases have been checked against packet traces and client display. The server-side count alone does not prove that the client renders the right value.</p>
+</article></main>
+  <footer class="site-footer">
+    <p><a href="project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

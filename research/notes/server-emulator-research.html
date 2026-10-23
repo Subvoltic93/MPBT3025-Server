@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BattleTech 3025 server emulator: initial investigation — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="../../assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>BattleTech 3025 server emulator: initial investigation</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="../../index.html">Status</a>
+<a href="../../readme.html">README</a>
+<a href="../../protocol.html">Protocol</a>
+<a href="../../research.html">Research</a>
+<a href="../../roadmap.html">Roadmap</a>
+<a href="../../project-files.html" class="current" aria-current="page">Project files</a></nav>
+  <main><article class="document"><h1>BattleTech 3025 server emulator: initial investigation</h1>
+<p>Investigated October 19, 2026. This is an initial static reverse-engineering
+assessment, not a recovered protocol specification or a working server.
+Original client files were read without modification. No connection to the
+historical EA endpoint was attempted. No new live packet trace was collected.</p>
+<h2>Recommendation</h2>
+<p>Build a standalone <strong>Go server</strong>, with <strong>Python research utilities</strong> and
+<strong>SQLite persistence</strong> initially. Keep the original client and isolate its
+legacy wire protocol from accounts, lobbies, campaign rules, and combat.
+Start as one executable with internal modules; separate processes only when
+there is a demonstrated need. Target Linux, Windows, and macOS servers;
+the existing Windows client remains a separate Wine/native compatibility issue.</p>
+<p>The principal challenge is recovering behavior, packet layouts, and timing,
+not raw throughput. Go gives us explicit binary encodings, ordinary TCP/UDP
+sockets, a relatively small implementation surface, and portable builds.
+The standard libraries document <a href="https://pkg.go.dev/net">networking</a> and
+<a href="https://pkg.go.dev/encoding/binary">binary encoding</a>; platform support is
+listed in the <a href="https://go.dev/doc/install/source">Go installation documentation</a>.
+The deployment build should avoid mandatory C dependencies; select the SQLite
+driver with that requirement in mind. Test actual release builds on each OS.</p>
+<p>C#/.NET is an equally credible choice if contributor familiarity favors it.
+Python is excellent for probes and extraction; it could also handle an initial
+server, but I favor Go's typed protocol code and deployment model for the
+maintained implementation. Neither C++ nor Rust is necessary for speed at this
+stage. Reconsider native code only for a measured bottleneck or exact behavior
+that is impractical to reproduce otherwise.</p>
+<h3>Contributor accessibility reassessment</h3>
+<p>The user's priorities are broad readability and ease of contribution. Go remains
+my recommendation for balancing these with portable server deployment; this is
+an engineering judgment, not a claim that Go has the largest contributor pool.
+Python is likely the easier entry point for many occasional contributors, and
+an established team with Python or C# expertise could reasonably choose either.
+We currently have no contributor survey that establishes a language preference.</p>
+<table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>Readability and workflow tradeoff for this project</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Go</td>
+<td>Relatively small language, explicit data types and errors, standard formatting and build/test tools. Pointers, interfaces and concurrency still need explanation; careless goroutine/channel use can make it hard to follow. Best overall fit in my judgment.</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>Concise and approachable for research and game rules. Type hints and disciplined module boundaries can make a maintainable server. Interpreter/dependency packaging and asynchronous control flow need care; speed alone is no reason to reject it.</td>
+</tr>
+<tr>
+<td>C#/.NET</td>
+<td>Strong types and tooling, portable runtime, reasonable choice for a C#-experienced team. Keep the chosen language/framework surface small to support occasional contributors.</td>
+</tr>
+</tbody>
+</table>
+<p>Go's <a href="https://go.dev/doc/effective_go">style guide</a> explains <code>gofmt</code>, and its
+<a href="https://go.dev/doc/code">project guide</a> describes the standard project workflow.
+See also the <a href="https://docs.python.org/3/tutorial/">Python tutorial</a> and
+<a href="https://learn.microsoft.com/en-us/dotnet/core/introduction">.NET overview</a>.</p>
+<p>Readability must be an implementation requirement:</p>
+<ul>
+<li>Prefer ordinary structs, functions, descriptive names, and explicit state
+transitions. Introduce interfaces or generics when a concrete need justifies
+them. Keep concurrent network handling outside sequential game-rule code.</li>
+<li>Keep packet byte handling in the protocol package. Game rules should read in
+terms of pilots, seats, purchases and battles, with named units and constants.</li>
+<li>Document each recovered packet with a byte diagram, provenance and example;
+explain uncertain historical behavior alongside the implementation.</li>
+<li>From the project root, use <code>go run ./src/cmd/server</code> to start the service and
+<code>./scripts/test.sh</code> to run tests. Keep first contributions free of Docker or
+a separate database service.</li>
+<li>Add a short contributor guide explaining package boundaries and a worked
+example of adding a message handler. Keep protocol documentation and editable
+game tables useful to contributors who do not write Go.</li>
+<li>Keep Python tools optional for normal server development; avoid splitting
+production game rules across languages.</li>
+</ul>
+<p>If a usable 3025 implementation becomes available, evaluate its correctness,
+license and maintainability before committing to a rewrite in Go. Reusing sound
+existing work can outweigh the benefits of a preferred language.</p>
+<h2>What the supplied files establish</h2>
+<table>
+<thead>
+<tr>
+<th>Evidence</th>
+<th>Observation</th>
+<th>Implication</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BT3025.exe</code> PE header</td>
+<td>Native 32-bit x86 Windows executable; linker timestamp September 24, 2001; symbols stripped</td>
+<td>This needs native binary analysis, not .NET decompilation. A linker timestamp is not proof of release date.</td>
+</tr>
+<tr>
+<td>Executable import table</td>
+<td>Imports <code>AriesLib_InitializeConnection</code> from <code>aries.dll</code></td>
+<td>There is a narrow connection boundary to trace and instrument.</td>
+</tr>
+<tr>
+<td><code>aries.dll</code> export table</td>
+<td><code>AriesLib_GetVersionInfo</code> at RVA <code>0x2a5f</code>; <code>AriesLib_InitializeConnection</code> at RVA <code>0x29b2</code></td>
+<td>We have named entry points despite stripped application symbols.</td>
+</tr>
+<tr>
+<td>Aries strings</td>
+<td><code>aol:</code>, <code>key:</code>, <code>WSOCK32.DLL</code>, <code>socket</code>, <code>connect</code>, <code>send</code>, <code>recv</code>, <code>ioctlsocket</code></td>
+<td>A legacy socket transport is recoverable. Complete framing, login semantics, and transport variants remain to be verified.</td>
+</tr>
+<tr>
+<td>Executable strings</td>
+<td>118 distinct names ending in <code>_PDU</code></td>
+<td>Many lobby and game message families can be inventoried before decoding their layouts. These are names, not recovered numeric opcodes.</td>
+</tr>
+<tr>
+<td>Protocol diagnostics</td>
+<td>Labels for player IDs, rooms, profiles, planets, houses, weapons, armor, ranks, configuration sequence, and terrain seed</td>
+<td>Diagnostic routines provide useful anchors for finding associated classes and serialization. Labels alone do not establish field order or width.</td>
+</tr>
+<tr>
+<td><code>BTCombat.dll</code> exports</td>
+<td><code>CRealityManager</code>, <code>CMechObject</code>, <code>AddHeat</code>, <code>ApplyDamage</code>, <code>ComputeCRC</code>, <code>SendShotCommand</code>, <code>ReceiveCombatData</code>, <code>StartLesson</code></td>
+<td>Substantial combat behavior exists locally. Whether server logic duplicates, validates, or merely relays each part is unresolved.</td>
+</tr>
+<tr>
+<td><code>mpbt.kdt</code></td>
+<td>Starts with <code>KSDT</code>; structured binary content</td>
+<td>A data-container candidate requiring its own reader. Do not assume it is a complete server database.</td>
+</tr>
+<tr>
+<td><code>BT3025.vcr</code></td>
+<td>61,107 bytes; first big-endian uint32 is 61,103, exactly the remaining size; readable pilot and mech names</td>
+<td>Particularly useful serialized-data candidate. Its schema and exact purpose are not yet fully decoded.</td>
+</tr>
+<tr>
+<td>Original manual</td>
+<td>Defines pilot training, Solaris graduation, houses, rooms, purchases, progression, salary, and conquest</td>
+<td>A functional acceptance checklist, subject to differences between manual and client versions.</td>
+</tr>
+</tbody>
+</table>
+<p>The original <code>Versions.TXT</code> explicitly identifies SurRender 1.42.2.9 and Kesmai
+K3D components. We do not need to port the renderer to emulate the server.</p>
+<h3>Bootstrap evidence</h3>
+<p><code>GILS/gilstmp/gilsdata.gils</code> preserves a historical <code>STARTGAME</code> record, and
+<code>GILS/gilslog.txt</code> records a successful run. The log shows a GET to
+<code>www.ea.com:10080/EAPlay</code>, an <code>application/x-gils-plugin</code> response, and GILS
+parsing a <code>STARTGAME</code> record for game ID 2088. Its connection component has this
+shape, with the historical key omitted:</p>
+<pre><code class="language-text">cmdtxt=aol:&lt;historical-server-address&gt;:15000:key:&lt;session-key&gt;
+</code></pre>
+<p>The record also carries a separate member handle, numeric EA account ID,
+session ID, instance ID, download parameters, and HTTP heartbeat fields. The log
+shows GILS POSTing <code>/GameHeartbeat</code> every two minutes and sending <code>GAMEQUIT</code> at
+exit. These HTTP heartbeats belong to the EA launch/service flow; they must not
+be assumed to describe the Aries combat transport. The older failed
+<code>gilslog2.txt</code> receives an HTML response containing “User ticket data not found”
+and exits without parsing <code>STARTGAME</code>. Together with the manual's EA.com login
+steps, this shows that GILS bridges an already-authenticated EA web session to
+the game; it does not itself prompt for the member password.</p>
+<p>Historical account, session, and ticket values are present in the raw files but
+are unnecessary for implementation and must not be copied into notes. The logs
+confirm the handoff shape, not the ticket-minting or validation rules. A local
+emulator should continue to use a clearly local session key until those rules
+are independently recovered; a guessed <code>user=...</code> launch argument leaves the
+Aries account-name fields at <code>unknown</code>.</p>
+<p>The log confirms the original launcher passed an equivalent connection string
+to the game. Recreating the service still requires a local, well-defined account
+and session handoff; these files do not specify EA's ticket-generation or game
+server validation algorithm. Rebuilding the retired website and patcher is not
+required for the first local playable milestone.</p>
+<h3>Useful disassembly anchors</h3>
+<p>Addresses below are preferred virtual addresses for these specific binaries,
+not universal offsets. Hashes are in <code>client/research/client-inventory.json</code>.</p>
+<ul>
+<li><code>BT3025.exe:0x4dc637</code> and <code>0x4f1edf</code> call the Aries initialization import
+through IAT address <code>0x585998</code>; both pass <code>0x68</code> as the third argument.</li>
+<li><code>aries.dll:0x100029b2</code> dispatches initialization by the third argument.
+The <code>0x68</code> branch constructs an object through <code>0x10001170</code>.
+This is a promising route to recovering the connection ABI and vtable.</li>
+<li><code>BT3025.exe:0x52dd43</code> references the <code>STATIC_CONFIG_RESPONSE_PDU</code> diagnostic
+string; <code>0x52e2f1</code> references <code>STATIC_CONFIG_UPDATE_PDU</code>; <code>0x52ec91</code> references
+<code>BTCLIENT_ONLINE_PDU</code>. These are diagnostic anchors, not packet handlers
+identified solely by the string references.</li>
+<li>Candidate related serializer/deserializer routines appear around
+<code>0x52dce0</code>/<code>0x52dd00</code>, <code>0x52e1e0</code>–<code>0x52e2cd</code>, and
+<code>0x52ec20</code>–<code>0x52ec6b</code>. Follow class vtables and callers to confirm roles.</li>
+<li><code>BT3025.exe:0x401d69</code> and <code>0x4023af</code> reference <code>BT3025.vcr</code> in file-stream
+paths. Nearby code invokes the same serialization-helper family found in
+protocol-related routines. This strengthens the cached serialized-data
+hypothesis, but does not prove the file is an on-wire packet capture.</li>
+</ul>
+<p>Important named message families include:</p>
+<pre><code class="language-text">CLIENT_ONLINE_PDU / HOST_ONLINE_PDU / BTCLIENT_ONLINE_PDU
+STATIC_CONFIG_UPDATE_PDU / STATIC_CONFIG_RESPONSE_PDU
+CREATE_CHARACTER_PDU / MODIFY_CHARACTER_PDU / BUY_MECH_PDU
+LIST_ROOMS_PDU / JOIN_ROOM_PDU / READ_PROFILE_PDU
+JOIN_PLANET_PDU / REQUEST_PLANET_STATES_PDU
+READY_ROOM_LIST_PDU / SET_SEAT_OPTIONS_PDU / COUNTDOWN_TIMER_PDU
+CONFIGURE_COMBAT_PDU / START_COMBAT_PDU / ENTER_COMBAT_PDU
+COMBAT_DATA_PDU / COMBAT_EVENT_PDU / COMBAT_SUMMARY_PDU
+VICTORY_AWARDED_PDU / NOTIFY_COMSTAR_INTERDICTION_PDU
+</code></pre>
+<h2>Prior preservation work</h2>
+<p><strong>3025 has already had an independent partial emulator.</strong> In his January 27,
+2024 <a href="https://www.youtube.com/watch?v=Yiv9tl4QD7Q">demonstration description</a>,
+Andrew Hassell describes recreating the server, says multiplayer still needs
+substantial work, and says illness prevented him continuing. This is useful
+first-party evidence of prior work, not proof that a complete playable server
+or public source release exists. I did not locate a verified public 3025
+source repository during this search. Obtaining source or protocol notes,
+if the author chooses to share them, could save considerable duplicated work.</p>
+<p>There is a public <a href="https://github.com/kenhuman/mpbt-server">Solaris emulator</a>,
+written in TypeScript. Its README documents ARIES framing and partial game
+restoration for <strong>Solaris's <code>MPBTWIN.EXE</code></strong>, a different client. It describes
+the older title's lobby server redirecting with ARIES type <code>0x03</code> and the client
+opening a second TCP connection to a world server; that server then restores
+room presence. Our supplied 3025 <code>aries.dll</code> has an outer type-3 connection
+dispatch, making this a plausible architecture clue, but not proof that 3025
+uses that exact handoff at <code>JOIN_PLANET</code>. Do not import its inner game-command
+framing, numeric opcodes, or combat model into 3025 without checking our binary
+and traces. The emulator is licensed AGPL-3.0; do not incorporate its code
+without a separate license review.</p>
+<h2>Architecture to aim for</h2>
+<pre><code class="language-text">Original BT3025 client (Windows / Wine)
+             |
+       legacy Aries protocol
+             |
+     transport + framing + codecs
+             |
+        session / dispatcher
+             |
+ accounts -- pilots -- rooms/chat -- ready rooms -- combat
+                    |                            |
+             persistent campaign &lt;--- match results
+                    |
+          SQLite + extracted game tables
+</code></pre>
+<p>Use explicit integer sizes, byte order, string encoding, and length limits.
+Never serialize host-native structs or assume that a TCP read is a message.
+Recover and implement fragmentation/reassembly if required: the client has
+<code>SPLIT_BUFFER_PDU</code> and related diagnostics, but its exact rules are unknown.
+Keep protocol version differences in codecs rather than scattered game rules.</p>
+<p>Use serialized state transitions for each room/match and database transactions
+for purchases, rewards, salary, and territorial updates. Session loss, ejection,
+match abandonment, and reconnects need defined behavior. A match result must
+not award money or conquest twice after a retry or restart.</p>
+<p>Avoid choosing a combat tick rate or authoritative simulation model until the
+client's packet cadence and ownership rules are established. A relay may be
+enough for an initial experiment; it is not evidence of authentic combat or a
+complete server. If authoritative simulation is required, port recovered rules
+into the portable core. Do not make production depend on loading Windows
+<code>BTCombat.dll</code> under Wine. A DLL-backed research harness can still serve as a
+comparison oracle.</p>
+<h2>Implementation sequence and acceptance gates</h2>
+<ol>
+<li><strong>Recover bootstrap and transport.</strong> Import the EXE, Aries, and combat DLL
+into Ghidra; trace command-line parsing, socket initialization, and framing.
+Capture only a local controlled session with a listener and Wine socket
+logging/debugger instrumentation. Gate: a repeatable local connection with
+decoded initial traffic and no dependency on the old EA services.</li>
+<li><strong>Decode configuration and enter the shell.</strong> Trace the upload screen's
+actual state transitions, recover its expected acknowledgments and static
+tables, and decode the VCR candidate. Gate: the original client reaches
+pilot creation/lobby through genuine protocol exchanges. The screen text
+alone does not establish which request is blocking it.</li>
+<li><strong>Restore the persistent pilot loop.</strong> Pilot creation, Solaris status,
+house selection, profiles, chat, room rosters, mech ownership and purchases.
+Gate: two clients see each other and state survives a server restart.</li>
+<li><strong>Restore one complete battle.</strong> Ready seats, configuration, countdown,
+terrain/seed setup, movement, firing, damage, ejection, victory, return.
+Gate: two clients agree on a complete match, with results applied once.</li>
+<li><strong>Expand to normal multiplayer and conquest.</strong> Full lances, room lifecycle,
+planet availability/ownership, victory effects, ComStar interdiction,
+economy, rank/qualification and salary. Gate: an end-to-end campaign cycle
+works and persists correctly.</li>
+<li><strong>Finish fidelity and operations.</strong> Training lessons, practice modes,
+contacts/private messaging, statistics, house changes, failure paths,
+disconnects, restarts, and every other reachable feature supported by this
+build. Validate Windows/Linux/macOS server builds against the same fixtures.</li>
+</ol>
+<p>Track every feature as observed, inferred, implemented, and verified. Define
+&quot;original functionality&quot; against this preserved build first: prerelease
+promises and features from other BattleTech titles are not equivalent evidence.
+The manual should become a feature matrix with page references and live-client
+acceptance checks. Never mark restoration complete merely because menus open.</p>
+<p>Protocol tests should use captured or client-generated byte fixtures, including
+partial/coalesced TCP reads, invalid lengths, sequence handling and disconnects.
+Combat tests should compare against recovered behavior and multi-client traces,
+especially numeric rounding, timing, random seeds and agreement on damage.
+An encode/decode round trip alone can reproduce the same wrong assumption twice.</p>
+<h2>Immediate next work</h2>
+<p>The highest-value next implementation is a localhost bootstrap/trace harness
+and a documented first handshake, followed by the smallest configuration
+exchange that gets past the current startup boundary. Defer broad gameplay
+implementation until that exchange is verified. Full restoration looks
+plausible, but neither completeness nor a reliable schedule can be established
+before transport and combat responsibilities are recovered.</p>
+<h2>Reproducing this initial inspection</h2>
+<p>From the repository root, run <code>python3 client/scripts/inspect-client.py</code> for hashes,
+PE sections, PDU names and file/virtual offsets. It uses only Python's standard
+library and reads originals.
+The generated inventory is saved at <code>client/research/client-inventory.json</code>.
+Local <code>client/research/raw/</code> contains <code>strings -a -t x</code>, <code>objdump -p</code>, executable
+disassembly and manual text used during this pass. These are generated working
+materials, not recovered source code. Keep original assets and private session
+records out of any future public emulator release.</p>
+</article></main>
+  <footer class="site-footer">
+    <p><a href="../../project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

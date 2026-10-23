@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roadmap — MPBT 3025 Server</title>
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<div class="site-shell">
+  <header class="masthead">
+    <div class="eyebrow">ComStar archives &nbsp; // &nbsp; MPBT 3025 server emulator</div>
+    <h1>Roadmap</h1>
+    <div class="report-date">Project documentation</div>
+  </header>
+  <nav class="site-nav" aria-label="Project pages"><a href="index.html">Status</a>
+<a href="readme.html">README</a>
+<a href="protocol.html">Protocol</a>
+<a href="research.html">Research</a>
+<a href="roadmap.html" class="current" aria-current="page">Roadmap</a>
+<a href="project-files.html">Project files</a></nav>
+  <main><article class="document"><h1>Roadmap</h1>
+<p>The goal is a usable local multiplayer server with a clear boundary between confirmed behavior and prototype rules. Progress below reflects the implementation and existing live-session notes; room counts and side labels remain open because a mismatch has been reported.</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Status</th>
+<th>Outcome</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Aries listener and game PDU framing</td>
+<td>Done</td>
+<td>Local TCP bootstrap and packet codecs are separated into protocol packages.</td>
+</tr>
+<tr>
+<td>Pilot and campaign state</td>
+<td>Partial</td>
+<td>JSON persistence, pilot records, Solaris locations, rooms, seats, and prototype campaign rules exist. Creation and progression need full client-screen verification.</td>
+</tr>
+<tr>
+<td>Solaris staging and occupants</td>
+<td>Partial</td>
+<td>Two-client presence was demonstrated. Recheck room counts, stale occupants, reconnects, and Alpha/Beta labels across join/leave cases.</td>
+</tr>
+<tr>
+<td>Mission readiness and launch</td>
+<td>Demonstrated</td>
+<td>Seat selection, readiness, countdown, preparation barrier, and native combat entry were exercised with two clients.</td>
+</tr>
+<tr>
+<td>Combat command relay</td>
+<td>Partial</td>
+<td>Room-scoped position and fire relay works in recorded trials. The server does not yet own authoritative simulation.</td>
+</tr>
+<tr>
+<td>Combat resolution and results</td>
+<td>Next</td>
+<td>Validate targeted hit messages, apply damage consistently, detect destruction/end state, and return native results.</td>
+</tr>
+<tr>
+<td>Campaign services and economy</td>
+<td>Later</td>
+<td>Connect battle results to rank, credits, ownership, salary, and client-facing screens.</td>
+</tr>
+<tr>
+<td>Persistence adapter</td>
+<td>Later</td>
+<td>Choose a storage engine and migration approach only when JSON persistence no longer meets the server needs; keep storage behind a narrow adapter boundary. The <code>src/db/</code> files are placeholders today.</td>
+</tr>
+<tr>
+<td>Operational hardening</td>
+<td>Later</td>
+<td>Add restart/reconnect policy, configuration guidance, clean logging, and repeatable end-to-end scenarios.</td>
+</tr>
+</tbody>
+</table>
+<h2>Next work</h2>
+<ol>
+<li>Reproduce the reported Solaris count/team-label mismatch with two clients and inspect the same session’s packet trace.</li>
+<li>Compare roster updates, room occupancy fields, and seat counts after each join, leave, disconnect, reconnect, and side assignment. Correct the source of truth and the Solaris defender/attacker field mapping together.</li>
+<li>Re-run the two-client mission launch and combat relay after the roster correction.</li>
+<li>Trace a controlled shot through the client/server command stream, determine whether the client reports a hit or only a fire event, and identify the smallest server-owned damage step.</li>
+<li>Implement match completion only after hit/damage behavior and the client’s result-message layout are supported by evidence.</li>
+</ol>
+<h2>Completion criteria</h2>
+<p>The multiplayer loop is complete when two clients can enter a mission, receive correct roster and team displays, move and fire, see consistent hit and damage outcomes, and return to a stable result screen with persisted rewards. Each step must be repeatable from a clean local world snapshot and trace.</p>
+</article></main>
+  <footer class="site-footer">
+    <p><a href="project-files.html">Project files and downloads</a></p>
+    <p>Not an official EA or BattleTech site · Local project documentation</p>
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,282 @@
+package server
+
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
+	"path/filepath"
+	"testing"
+
+	"mpbt3025/src/protocol/game"
+	"mpbt3025/src/state"
+)
+
+func TestNativeCombatWaitsForBothPreparedClients(t *testing.T) {
+	hub := newSessionHub()
+	hub.experimentalCombatInit = true
+	hub.combatPreparing = map[int]map[string]bool{1: {"Alpha": false, "Beta": false}}
+	var sent []protocol.PDU
+	collect := func(p protocol.PDU) error { sent = append(sent, p); return nil }
+	alpha, beta, other := &liveSession{sendGamePDU: collect}, &liveSession{sendGamePDU: collect}, &liveSession{sendGamePDU: collect}
+	hub.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+	hub.sessions[beta] = planetPresence{callSign: "Beta", location: state.Location{RoomID: 1}}
+	hub.sessions[other] = planetPresence{callSign: "Other", location: state.Location{RoomID: 2}}
+	frame, err := hex.DecodeString("0000002b1b21274b4d2e5a4b593d7322302b4b4b4b4b4b4b4b4d4e4b4b4b4b4b4b4b4b4b4b4b4b2139574b3859341b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.noteCombatPrepared(alpha, frame)
+	hub.noteCombatPrepared(alpha, frame)
+	hub.noteCombatPrepared(other, frame)
+	if len(sent) != 0 {
+		t.Fatal("combat released before both mission clients prepared")
+	}
+	bad := append([]byte(nil), frame...)
+	bad[10] ^= 1
+	hub.noteCombatPrepared(beta, bad)
+	if len(sent) != 0 {
+		t.Fatal("corrupt input released combat")
+	}
+	hub.noteCombatPrepared(beta, frame)
+	if len(sent) != 2 {
+		t.Fatalf("ready recipients %d, want only the two mission clients", len(sent))
+	}
+	want := protocol.CombatData(protocol.CombatReadyCommand())
+	for _, p := range sent {
+		if p.ID != want.ID || !bytes.Equal(p.Body, want.Body) {
+			t.Fatal("unexpected native ready data")
+		}
+	}
+	hub.noteCombatPrepared(beta, frame)
+	if len(sent) != 2 {
+		t.Fatal("duplicate native ready release")
+	}
+}
+
+func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
+	hub := newSessionHub()
+	hub.experimentalCombatInit = true
+	hub.combatEntities = map[int]map[string]byte{1: {"Alpha": 0, "Beta": 1}, 2: {"Other": 0}}
+	var alphaSent, betaSent, otherSent []protocol.PDU
+	alpha := &liveSession{sendGamePDU: func(p protocol.PDU) error { alphaSent = append(alphaSent, p); return nil }}
+	beta := &liveSession{sendGamePDU: func(p protocol.PDU) error { betaSent = append(betaSent, p); return nil }}
+	other := &liveSession{sendGamePDU: func(p protocol.PDU) error { otherSent = append(otherSent, p); return nil }}
+	hub.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+	hub.sessions[beta] = planetPresence{callSign: "Beta", location: state.Location{RoomID: 1}}
+	hub.sessions[other] = planetPresence{callSign: "Other", location: state.Location{RoomID: 2}}
+	frame, err := hex.DecodeString("0000002b1b21274b4d2e5a4b593d7322302b4b4b4b4b4b4b4b4d4e4b4b4b4b4b4b4b4b4b4b4b4b2139574b3859341b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.relayCombatPosition(alpha, frame)
+	if len(betaSent) != 0 {
+		t.Fatal("relayed position before both clients prepared")
+	}
+	hub.combatActive = map[int]bool{1: true}
+	precheck, precheckErr := protocol.ParseClientCombatData(frame)
+	if precheckErr != nil {
+		t.Fatal(precheckErr)
+	}
+	if _, precheckErr = protocol.CombatPeerPosition(0, precheck); precheckErr != nil {
+		t.Fatalf("captured native position cannot relay: %v, %x", precheckErr, precheck)
+	}
+	hub.relayCombatPosition(alpha, frame)
+	if len(alphaSent) != 0 || len(otherSent) != 0 || len(betaSent) != 1 {
+		t.Fatalf("wrong room-scoped recipients: alpha=%d beta=%d other=%d", len(alphaSent), len(betaSent), len(otherSent))
+	}
+	clientCommand, err := protocol.ParseClientCombatData(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCommand, err := protocol.CombatPeerPosition(0, clientCommand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := protocol.CombatData(wantCommand)
+	if betaSent[0].ID != want.ID || !bytes.Equal(betaSent[0].Body, want.Body) {
+		t.Fatal("relay did not authenticate the sender's combat entity")
+	}
+	shotFrame, err := hex.DecodeString("0000004f1b21274b4c62634b5835422234234b4b4b4b4b4b4b4d4f4b4b4b4b4a734b4b4b4b4b4b212124462b21212121224b4b4b4b4b4b4b4c62634b5835422234234b582d554b4c606c4b4c61752224714c1b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.relayCombatPosition(alpha, shotFrame)
+	if len(alphaSent) != 0 || len(otherSent) != 0 || len(betaSent) != 3 {
+		t.Fatal("combined position and fire did not stay within the active room")
+	}
+	shotCommands, err := protocol.ParseClientCombatData(shotFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFireCommand, err := protocol.CombatPeerFire(0, shotCommands[37:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFire := protocol.CombatData(wantFireCommand)
+	if betaSent[2].ID != wantFire.ID || !bytes.Equal(betaSent[2].Body, wantFire.Body) {
+		t.Fatal("relay did not map native fire with the authenticated entity")
+	}
+	bad := append([]byte(nil), frame...)
+	bad[10] ^= 1
+	hub.relayCombatPosition(alpha, bad)
+	if len(betaSent) != 3 {
+		t.Fatal("relayed corrupt native position")
+	}
+	hub.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 2}}
+	hub.relayCombatPosition(alpha, frame)
+	if len(betaSent) != 3 || len(otherSent) != 0 {
+		t.Fatal("relayed a pilot after it left the launched room")
+	}
+}
+
+func TestMissionMembershipRefreshesStagingCountsAndReleasesDisconnectedSeat(t *testing.T) {
+	world, err := state.Open(filepath.Join(t.TempDir(), "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Stager", "Seated"} {
+		if _, err := world.CreatePilot(name); err != nil {
+			t.Fatal(err)
+		}
+		if err := world.JoinPlanet(name, state.SolarisPlanetID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hub := newSessionHub(world)
+	hub.planetRoomType = 1
+	var updates []protocol.PDU
+	stager := &liveSession{sendGamePDU: func(p protocol.PDU) error { updates = append(updates, p); return nil }}
+	seated := &liveSession{sendGamePDU: func(protocol.PDU) error { return nil }}
+	pilot, _ := world.Pilot("Stager")
+	hub.publishPlanetJoin(stager, pilot)
+	hub.publishRoomLists()
+	rooms, _ := solarisMissionRooms(world, pilot)
+	roomID := int(rooms[0].ID.Number)
+	peer, _ := world.Pilot("Seated")
+	hub.publishPlanetJoin(seated, peer)
+	updates = nil
+	if err := world.JoinAvailableRoom("Seated", roomID); err != nil {
+		t.Fatal(err)
+	}
+	peer, _ = world.Pilot("Seated")
+	rooms, _ = solarisMissionRooms(world, pilot)
+	hub.publishMissionJoin(seated, peer, rooms[0], missionCombat(world, rooms[0]), missionSeatUpdates(world, roomID))
+	assertRoom := func(wantOccupancy uint32, wantSeats []protocol.SeatLite) {
+		t.Helper()
+		var got *protocol.PDU
+		for i := range updates {
+			if updates[i].ID == 0x98 && binary.BigEndian.Uint32(updates[i].Body) == uint32(roomID) {
+				got = &updates[i]
+			}
+		}
+		if got == nil {
+			t.Fatal("staging client did not receive READY_ROOM_UPDATE")
+		}
+		infos, _ := solarisMissionRooms(world, pilot)
+		if infos[0].Occupancy != wantOccupancy || infos[0].OpenDefenderSeats != 4-byte(wantOccupancy) || infos[0].OpenAttackerSeats != 4 {
+			t.Fatalf("staging counts: %+v", infos[0])
+		}
+		want := protocol.ReadyRoomUpdate(infos[0], wantSeats)
+		if !bytes.Equal(got.Body, want.Body) {
+			t.Fatal("room update has stale occupants or counts")
+		}
+	}
+	assertRoom(1, []protocol.SeatLite{{Number: 1, Team: 1, CallSign: "Seated"}})
+	updates = nil
+	hub.remove(seated)
+	assertRoom(0, nil)
+	peer, _ = world.Pilot("Seated")
+	if peer.Location.RoomID != 0 {
+		t.Fatalf("disconnected pilot retained room: %+v", peer.Location)
+	}
+	for _, lance := range world.Snapshot().Rooms[roomID].Seats {
+		for _, seat := range lance {
+			if seat.CallSign != "" {
+				t.Fatalf("ghost seat: %+v", seat)
+			}
+		}
+	}
+}
+
+func TestMissionRosterExcludesOtherRoomsOnArrivalAndDeparture(t *testing.T) {
+	hub := newSessionHub()
+	var received []protocol.PDU
+	mission := &liveSession{sendGamePDU: func(p protocol.PDU) error { received = append(received, p); return nil }}
+	peer := &liveSession{sendGamePDU: func(protocol.PDU) error { return nil }}
+	hub.publishPlanetJoin(mission, state.Pilot{CallSign: "MissionPilot", Location: state.Location{PlanetID: 121, CityID: 1, RoomID: 1}})
+	received = nil
+	hub.publishPlanetJoin(peer, state.Pilot{CallSign: "LobbyPilot", Location: state.Location{PlanetID: 121, CityID: 1}})
+	hub.remove(peer)
+	if len(received) != 0 {
+		t.Fatalf("unrelated lobby arrival/departure leaked into mission roster: %#v", received)
+	}
+}
+
+func TestReturningToStagingReannouncesCachedPeers(t *testing.T) {
+	hub := newSessionHub()
+	hub.planetRoomType = 1
+	var received []protocol.PDU
+	returning := &liveSession{sendGamePDU: func(p protocol.PDU) error { received = append(received, p); return nil }}
+	peer := &liveSession{sendGamePDU: func(protocol.PDU) error { return nil }}
+	location := state.Location{PlanetID: 121, CityID: 1}
+	hub.publishPlanetJoin(returning, state.Pilot{CallSign: "Returning", Location: location})
+	hub.publishPlanetJoin(peer, state.Pilot{CallSign: "AlreadyCached", Location: location})
+	previous := planetPresence{callSign: "Returning", location: state.Location{PlanetID: 121, CityID: 1, RoomID: 1}}
+	hub.sessions[returning] = previous
+	received = nil
+	hub.publishMissionDeparture(returning, previous, state.Pilot{CallSign: "Returning", Location: location})
+	if len(received) == 0 || received[0].ID != protocol.RoomUpdateID {
+		t.Fatal("returning client did not rebuild its staging room")
+	}
+	arrived := false
+	snapshot := false
+	for _, p := range received {
+		if p.ID == 0x3b {
+			snapshot = true
+		}
+		if p.ID == protocol.OccupantArrivedID && bytes.Equal(p.Body, protocol.OccupantArrivedFor("AlreadyCached").Body) {
+			arrived = true
+		}
+	}
+	if !arrived || !snapshot {
+		t.Fatal("returning room requires a full occupant snapshot and cached-peer membership")
+	}
+}
+
+func TestLeavingMissionClearsNativeSeatBeforeLobbyTransition(t *testing.T) {
+	world, err := state.Open(filepath.Join(t.TempDir(), "world.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := world.CreatePilot("Leaving"); err != nil {
+		t.Fatal(err)
+	}
+	if err := world.JoinPlanet("Leaving", 121); err != nil {
+		t.Fatal(err)
+	}
+	rooms, _ := world.RoomsForSolarisCity("Leaving")
+	if err := world.JoinAvailableRoom("Leaving", rooms[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	pilot, _ := world.Pilot("Leaving")
+	previous := planetPresence{callSign: pilot.CallSign, location: pilot.Location}
+	hub := newSessionHub(world)
+	hub.planetRoomType = 1
+	var updates []protocol.PDU
+	session := &liveSession{sendGamePDU: func(p protocol.PDU) error { updates = append(updates, p); return nil }}
+	hub.sessions[session] = previous
+	if err := world.LeaveRoom("Leaving"); err != nil {
+		t.Fatal(err)
+	}
+	pilot, _ = world.Pilot("Leaving")
+	hub.publishMissionDeparture(session, previous, pilot)
+	if len(updates) < 2 || updates[0].ID != protocol.CombatConfigurationUpdateID || updates[1].ID != protocol.RoomUpdateID {
+		t.Fatal("lobby transition omitted the native combat-seat removal")
+	}
+	if bytes.Contains(updates[0].Body, []byte("Leaving")) {
+		t.Fatal("leaving client still sees its own occupied combat seat")
+	}
+	if !bytes.Equal(updates[0].Body, missionCombat(world, protocol.RoomInfo{ID: protocol.RoomID{Number: uint32(rooms[0].ID), Host: "local"}}).Body) {
+		t.Fatal("departing client did not get the updated previous mission")
+	}
+}

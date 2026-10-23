@@ -23,7 +23,7 @@ The project layout borrows the broad separation used by [KenzHuman’s `mpbt-ser
 
 **Implemented but not fully validated end to end:** character creation persistence semantics, House chat, full campaign navigation, economy screens, authoritative room-count behavior across reconnect and multi-room cases, and stable reconnect behavior.
 
-**Unknown or incomplete:** the meaning of every field in planet-state records; the client’s complete split-buffer reassembly behavior; full Team chat semantics; server-retained pose state, world-axis transforms, collision volume/tolerance, and correspondence between client-reported HitReturn points and validated hits; authoritative movement, hit detection, damage, destruction, match end, score, rank, and rewards.
+**Unknown or incomplete:** the meaning of every field in planet-state records; the client’s complete split-buffer reassembly behavior; full Team chat semantics; complete native pose-field semantics, world-axis transforms, collision volume/tolerance, and correspondence between client-reported HitReturn points and validated hits; authoritative movement, hit detection, damage, destruction, match end, score, rank, and rewards. The server now caches reported X/Y and 15 opaque native pose-field bytes per authenticated entity for each active mission, solely for diagnostics.
 
 ## Room roster and side labels
 

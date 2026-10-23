@@ -138,7 +138,7 @@ The generator writes static HTML next to the source tree; GitHub Pages serves th
 
 Native `FillMech` scales setup coordinates by 0.01 and computes facing toward the map origin (`0x6904207e`–`0x690420fd`). The experimental launcher now mirrors opposing lances across that origin: first seats are 200 metres apart, with 30 metre seat spacing. This controlled diagnostic arrangement replaces the almost parallel, 20 metre separation used previously. The October 23 follow-up confirmed mutual sight, 200 metre target selection, targeted laser reports in both directions and the incoming laser effect. The later opt-in armor diagnostic verified one synchronized non-lethal armor change per target. These remain diagnostic spawns, not recovered production spawn rules.
 
-Native damage research now establishes absolute remaining armor assignments and overflow into internal structure using isolated DLL execution. The protocol encoder is covered by native writer fixtures; the opt-in diagnostic now emits one armor assignment per target, with synchronized native HUD changes verified. See the [combat notes](research/notes/combat-command-stream.md).
+Native damage research now establishes absolute remaining armor assignments and overflow into internal structure using isolated DLL execution. The protocol encoder is covered by native writer fixtures; the opt-in diagnostic now emits one armor assignment per target, with synchronized native HUD changes verified. The server also caches the latest reported X/Y and 15 opaque pose-field bytes for each authenticated mission entity to support pose and HitReturn correlation; these client values do not authorize damage. See the [combat notes](research/notes/combat-command-stream.md).
 
 ## Controlled armor diagnostic
 

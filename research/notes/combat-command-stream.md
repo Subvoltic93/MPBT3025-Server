@@ -317,8 +317,10 @@ Native client position command `0x27` begins with signed four-digit X and Y.
 The decoder subtracts `85^4/2`, the inverse of the setup encoder. Captured
 live position reports decode to `(0,10000)` and `(0,-10000)`, matching the
 mirrored diagnostic launch coordinates; `FillMech` scales those coordinates
-by `0.01`, producing the verified 200m pair spacing. The client sends position
-alongside the sampled fire report, but the server does not retain positions.
+by `0.01`, producing the verified 200m pair spacing. The relay now retains the
+latest reported X/Y and the following 15 opaque pose-field bytes per
+authenticated entity in the active mission for diagnostic correlation. These
+fields remain client supplied and are not used to authorize damage.
 
 `CWeapon::Init` copies six medium-laser range values to weapon object
 `+0x34..+0x48`: `[45,90,135,180,225,270]`. The use of those values as accuracy
@@ -341,13 +343,11 @@ saved `0x81` frames as `(0,10000)` and `(0,-10000)`. Neither that decoder nor
 the fire-point parser changes relay behavior or promotes either report to
 authoritative state.
 
-Native callback0x69073640 processes the local position command in combat state3,
-scales pose fields by0.01, and calls `Mech::SetPosition`0x69045920. This ties
-the client `0x27` family to native pose updates. The server's peer command `b`
-uses a separate receive path; the server currently retains no position state,
-and the native Mech collision volume/tolerance remains unknown. A future hit
-check must first follow the peer `0x41` visitor and reconstruct its position
-updates independently of the collision report.
+The server `0x41` peer-position command follows the native receive path below.
+It applies client-reported pose fields through `Mech::SetPosition` in combat
+state3. The server retains only reported X/Y for correlation; complete pose
+field semantics, world-axis transforms, and Mech collision volume/tolerance
+remain unknown.
 
 ### Peer-position receive visitor mapping
 
@@ -364,7 +364,9 @@ This matches visitor callback `0x69073640`: it reads the entity byte at
 pose values, and calls `Mech::SetPosition` `0x69045920`. The callback is also
 visitor-table slot1 (`0x6908e6ac`). This establishes the native peer-position
 receive/application path and corrects the earlier overly cautious checkpoint.
-The server relay still does not retain a pose cache. Axis meaning, transformed
-world coordinates, collision volume/tolerance, and whether a client-reported
-HitReturn point corresponds to a server-validated hit remain open; do not use
-the collision report alone to authorize damage.
+The server relay now stores the last reported X/Y and 15 opaque pose-field
+bytes by authenticated entity for each active mission. It clears this cache on
+launch, mission departure, and disconnect. Axis meaning, transformed world coordinates, collision
+volume/tolerance, and whether a client-reported HitReturn point corresponds to
+a server-validated hit remain open; do not use the collision report alone to
+authorize damage.

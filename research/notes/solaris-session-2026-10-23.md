@@ -430,3 +430,17 @@ unresolved-mapping checkpoint above is superseded by this field-offset match.
 Next recover axis transforms and collision volume/tolerance before applying
 any hit gate. Client-reported HitReturn coordinates remain untrusted, and the
 server does not yet retain the relayed pose. No code or process state changed.
+
+## Reported-position cache checkpoint
+
+Added a per-mission cache of the most recent reported X/Y plus 15 opaque native
+pose-field bytes, keyed by the authenticated compact combat entity. The relay
+updates it only for an active mission member after the full native frame
+passes validation. New mission launch, mission departure, and disconnect
+clear that mission's cache. The cache is observational and does not influence
+relay or damage decisions.
+Regression now checks captured coordinates, authenticated entity selection,
+corrupt-frame rejection, and room isolation. Full overlay Go suite passes;
+the two focused tests also pass under the Go race detector. The new server
+build succeeds. Existing native server PID401100 and its no-client state
+remain unchanged. Axis and collision interpretation remain open.

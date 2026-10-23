@@ -18,7 +18,7 @@ The goal is a usable local multiplayer server with a clear boundary between conf
 
 1. Exercise native cross-city navigation and reconnects against the city-scoped roster correction; keep same-side seat assignment as a separate unverified case.
 2. Preserve the repeatable same-city scenario: one pilot staged, peer joins/leaves, both join, chat channels, ready/cancel, then native combat entry.
-3. Reconcile the confirmed key `0x41` peer-position visitor's pose fields with world-axis transforms, then recover collision volume/tolerance and whether `HitReturn` coordinates can be validated against server-held peer poses. The server currently relays poses without retaining them; keep collision reports untrusted.
+3. Reconcile the confirmed key `0x41` peer-position visitor's pose fields with world-axis transforms, then recover collision volume/tolerance and whether `HitReturn` coordinates can be validated against server-held peer poses. The server caches reported X/Y plus 15 opaque native pose bytes per authenticated entity for diagnostics only; keep collision reports untrusted.
 4. Extend the verified diagnostic assignment/fire path into server hit validation and remaining-armor tracking only after pose and hit geometry are understood. Preserve separate component/internal/destruction rules and recover the piloting-target calculation. Clear mutual sight, target selection and targeted laser relay in both directions are now demonstrated. New native standalone-fire delivery remains pending; the follow-up shots were position/fire batches.
 5. Implement match completion only after hit/damage behavior and the client's result-message layout are supported by evidence.
 

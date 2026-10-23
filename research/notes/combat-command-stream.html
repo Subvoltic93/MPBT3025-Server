@@ -359,8 +359,10 @@ establish authoritative hits or match completion.</p>
 The decoder subtracts <code>85^4/2</code>, the inverse of the setup encoder. Captured
 live position reports decode to <code>(0,10000)</code> and <code>(0,-10000)</code>, matching the
 mirrored diagnostic launch coordinates; <code>FillMech</code> scales those coordinates
-by <code>0.01</code>, producing the verified 200m pair spacing. The client sends position
-alongside the sampled fire report, but the server does not retain positions.</p>
+by <code>0.01</code>, producing the verified 200m pair spacing. The relay now retains the
+latest reported X/Y and the following 15 opaque pose-field bytes per
+authenticated entity in the active mission for diagnostic correlation. These
+fields remain client supplied and are not used to authorize damage.</p>
 <p><code>CWeapon::Init</code> copies six medium-laser range values to weapon object
 <code>+0x34..+0x48</code>: <code>[45,90,135,180,225,270]</code>. The use of those values as accuracy
 bands or as a hard firing range has not yet been confirmed, so they do not yet
@@ -380,13 +382,11 @@ the same native <code>0x27</code> command. The regression reads both from the or
 saved <code>0x81</code> frames as <code>(0,10000)</code> and <code>(0,-10000)</code>. Neither that decoder nor
 the fire-point parser changes relay behavior or promotes either report to
 authoritative state.</p>
-<p>Native callback0x69073640 processes the local position command in combat state3,
-scales pose fields by0.01, and calls <code>Mech::SetPosition</code>0x69045920. This ties
-the client <code>0x27</code> family to native pose updates. The server's peer command <code>b</code>
-uses a separate receive path; the server currently retains no position state,
-and the native Mech collision volume/tolerance remains unknown. A future hit
-check must first follow the peer <code>0x41</code> visitor and reconstruct its position
-updates independently of the collision report.</p>
+<p>The server <code>0x41</code> peer-position command follows the native receive path below.
+It applies client-reported pose fields through <code>Mech::SetPosition</code> in combat
+state3. The server retains only reported X/Y for correlation; complete pose
+field semantics, world-axis transforms, and Mech collision volume/tolerance
+remain unknown.</p>
 <h3>Peer-position receive visitor mapping</h3>
 <p>The server key <code>0x41</code> registration thunk <code>0x6906f450</code> registers its factory
 through <code>0x69073e40</code>. Factory <code>0x6906f1c0</code> allocates a 0x50-byte wrapper, sets
@@ -400,10 +400,12 @@ wrapper offsets <code>+0x30</code>, <code>+0x34</code>, <code>+0x38</code>, <cod
 pose values, and calls <code>Mech::SetPosition</code> <code>0x69045920</code>. The callback is also
 visitor-table slot1 (<code>0x6908e6ac</code>). This establishes the native peer-position
 receive/application path and corrects the earlier overly cautious checkpoint.
-The server relay still does not retain a pose cache. Axis meaning, transformed
-world coordinates, collision volume/tolerance, and whether a client-reported
-HitReturn point corresponds to a server-validated hit remain open; do not use
-the collision report alone to authorize damage.</p>
+The server relay now stores the last reported X/Y and 15 opaque pose-field
+bytes by authenticated entity for each active mission. It clears this cache on
+launch, mission departure, and disconnect. Axis meaning, transformed world coordinates, collision
+volume/tolerance, and whether a client-reported HitReturn point corresponds to
+a server-validated hit remain open; do not use the collision report alone to
+authorize damage.</p>
 </article></main>
   <footer class="site-footer">
     <p><a href="../../project-files.html">Project files and downloads</a></p>

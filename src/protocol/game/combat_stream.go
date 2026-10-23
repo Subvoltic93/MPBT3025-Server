@@ -53,10 +53,12 @@ func CombatPeerPosition(entityID byte, clientCommand []byte) ([]byte, error) {
 	return command, nil
 }
 
-// CombatPosition is the reported native world position in hundredths of a
-// world unit. Its coordinates are client supplied and not server verified.
+// CombatPosition contains the reported native X/Y in hundredths of a world
+// unit plus the following opaque fields copied into the server peer command.
+// Every field is client supplied and not server verified.
 type CombatPosition struct {
-	X, Y int32
+	X, Y       int32
+	PoseFields [15]byte // Native unsigned-three field and four signed-three fields.
 }
 
 // ParseClientCombatPositionCommand reads the first two signed coordinates
@@ -70,8 +72,12 @@ func ParseClientCombatPositionCommand(command []byte) (CombatPosition, error) {
 			return CombatPosition{}, fmt.Errorf("invalid native position digit")
 		}
 	}
-	return CombatPosition{X: decodeSignedCombatCoordinate(command[1:5]),
-		Y: decodeSignedCombatCoordinate(command[5:9])}, nil
+	position := CombatPosition{
+		X: decodeSignedCombatCoordinate(command[1:5]),
+		Y: decodeSignedCombatCoordinate(command[5:9]),
+	}
+	copy(position.PoseFields[:], command[9:24])
+	return position, nil
 }
 
 // ClientCombatBatch is the supported part of a native client stream: an

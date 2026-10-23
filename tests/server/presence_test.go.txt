@@ -98,6 +98,12 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	if betaSent[0].ID != want.ID || !bytes.Equal(betaSent[0].Body, want.Body) {
 		t.Fatal("relay did not authenticate the sender's combat entity")
 	}
+	if got := hub.combatPositionReports[1][0]; got.X != 12000 || got.Y != 100000 {
+		t.Fatalf("cached native sender report = %+v, want X=12000 Y=100000", got)
+	}
+	if len(hub.combatPositionReports[1]) != 1 {
+		t.Fatalf("cached reports for unreported entities: %+v", hub.combatPositionReports[1])
+	}
 	shotFrame, err := hex.DecodeString("0000004f1b21274b4c62634b5835422234234b4b4b4b4b4b4b4d4f4b4b4b4b4a734b4b4b4b4b4b212124462b21212121224b4b4b4b4b4b4b4c62634b5835422234234b582d554b4c606c4b4c61752224714c1b")
 	if err != nil {
 		t.Fatal(err)
@@ -110,6 +116,14 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	shotPosition, err := protocol.ParseClientCombatPositionCommand(shotCommands[:37])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hub.combatPositionReports[1][0]; got != shotPosition {
+		t.Fatalf("combined frame cached report = %+v, want %+v", got, shotPosition)
+	}
+	cachedBeforeInvalid := hub.combatPositionReports[1][0]
 	wantFireCommand, err := protocol.CombatPeerFire(0, shotCommands[37:])
 	if err != nil {
 		t.Fatal(err)
@@ -124,10 +138,40 @@ func TestNativeCombatPositionRelaysOnlyToActiveRoomPeer(t *testing.T) {
 	if len(betaSent) != 3 {
 		t.Fatal("relayed corrupt native position")
 	}
+	if got := hub.combatPositionReports[1][0]; got != cachedBeforeInvalid {
+		t.Fatalf("corrupt packet changed cached report: %+v", got)
+	}
 	hub.sessions[alpha] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 2}}
 	hub.relayCombatCommands(alpha, frame)
 	if len(betaSent) != 3 || len(otherSent) != 0 {
 		t.Fatal("relayed a pilot after it left the launched room")
+	}
+	if _, ok := hub.combatPositionReports[2][0]; ok {
+		t.Fatal("cached a pose after its pilot left the launched room")
+	}
+}
+
+func TestDisconnectClearsMissionCombatPositionReports(t *testing.T) {
+	hub := newSessionHub()
+	session := &liveSession{sendGamePDU: func(protocol.PDU) error { return nil }}
+	hub.sessions[session] = planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+	hub.combatEntities = map[int]map[string]byte{1: {"Alpha": 0}}
+	hub.combatPositionReports = map[int]map[byte]protocol.CombatPosition{1: {0: {X: 12000, Y: 100000}}}
+
+	hub.remove(session)
+	if _, ok := hub.combatPositionReports[1]; ok {
+		t.Fatal("disconnect retained position reports from the departed mission")
+	}
+
+	hub = newSessionHub()
+	previous := planetPresence{callSign: "Alpha", location: state.Location{RoomID: 1}}
+	session = &liveSession{sendGamePDU: func(protocol.PDU) error { return nil }}
+	hub.sessions[session] = previous
+	hub.combatEntities = map[int]map[string]byte{1: {"Alpha": 0}}
+	hub.combatPositionReports = map[int]map[byte]protocol.CombatPosition{1: {0: {X: 12000, Y: 100000}}}
+	hub.publishMissionDeparture(session, previous, state.Pilot{CallSign: "Alpha"})
+	if _, ok := hub.combatPositionReports[1]; ok {
+		t.Fatal("mission departure retained position reports from the departed mission")
 	}
 }
 

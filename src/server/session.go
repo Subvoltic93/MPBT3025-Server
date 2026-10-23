@@ -30,7 +30,9 @@ type sessionHub struct {
 	combatArmorProbed            map[int]map[byte]bool
 	combatPreparing              map[int]map[string]bool
 	combatEntities               map[int]map[string]byte
-	combatActive                 map[int]bool
+	// Untrusted native position reports retained only for diagnostic correlation.
+	combatPositionReports map[int]map[byte]protocol.CombatPosition
+	combatActive          map[int]bool
 }
 
 type planetPresence struct {
@@ -104,6 +106,7 @@ func (h *sessionHub) remove(session *liveSession) {
 	if joined && presence.location.RoomID != 0 {
 		delete(h.combatPreparing, presence.location.RoomID)
 		delete(h.combatEntities, presence.location.RoomID)
+		delete(h.combatPositionReports, presence.location.RoomID)
 		delete(h.combatActive, presence.location.RoomID)
 		delete(h.combatArmorProbed, presence.location.RoomID)
 	}
@@ -226,6 +229,7 @@ func (h *sessionHub) publishMissionDeparture(session *liveSession, previous plan
 	h.mu.Lock()
 	delete(h.combatPreparing, previous.location.RoomID)
 	delete(h.combatEntities, previous.location.RoomID)
+	delete(h.combatPositionReports, previous.location.RoomID)
 	delete(h.combatActive, previous.location.RoomID)
 	delete(h.combatArmorProbed, previous.location.RoomID)
 	targets := make([]*liveSession, 0)
@@ -515,6 +519,10 @@ func (h *sessionHub) launchMission(roomID int) {
 		h.combatEntities = map[int]map[string]byte{}
 	}
 	h.combatEntities[roomID] = ids
+	if h.combatPositionReports == nil {
+		h.combatPositionReports = map[int]map[byte]protocol.CombatPosition{}
+	}
+	delete(h.combatPositionReports, roomID)
 	if h.combatActive == nil {
 		h.combatActive = map[int]bool{}
 	}
@@ -599,6 +607,19 @@ func (h *sessionHub) relayCombatCommands(session *liveSession, body []byte) {
 	if !joined || !h.combatActive[roomID] || !expected {
 		h.mu.Unlock()
 		return
+	}
+	if batch.Position != nil {
+		if report, parseErr := protocol.ParseClientCombatPositionCommand(batch.Position); parseErr == nil {
+			if h.combatPositionReports == nil {
+				h.combatPositionReports = map[int]map[byte]protocol.CombatPosition{}
+			}
+			if h.combatPositionReports[roomID] == nil {
+				h.combatPositionReports[roomID] = map[byte]protocol.CombatPosition{}
+			}
+			// This cache is for correlating native pose and HitReturn reports.
+			// Client coordinates remain untrusted and never authorize damage.
+			h.combatPositionReports[roomID][entityID] = report
+		}
 	}
 	recipients := make([]*liveSession, 0)
 	for other, peer := range h.sessions {

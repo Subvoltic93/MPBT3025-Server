@@ -37,6 +37,16 @@
   -trace-dir runtime/traces/test
 </code></pre>
 <p>Run <code>go run ./src/cmd/server -h</code> for the available flags. Planet-state probes, room-type trials, combat initialization, and the second listener are experimental; use them only with an isolated local client.</p>
+<h2>Connect a local client</h2>
+<p>The client connects to the server over Aries on TCP. In the existing client's server-address settings, provide the server host and port; enter a host and port rather than an <code>http://</code> URL. Use a separately installed client: this project does not include or distribute client files.</p>
+<p>For a client running on the same computer, start the default listener and set the client address to <code>127.0.0.1</code>, port <code>15000</code>:</p>
+<pre><code class="language-sh">go run ./src/cmd/server -listen 127.0.0.1:15000
+</code></pre>
+<p>For a client on another computer on your private LAN, bind the server to its network interfaces, then give the client the server computer's LAN IP address and port <code>15000</code>:</p>
+<pre><code class="language-sh">go run ./src/cmd/server -listen 0.0.0.0:15000
+</code></pre>
+<p>For example, if the server computer's LAN address is <code>192.168.1.25</code>, enter host <code>192.168.1.25</code> and port <code>15000</code> in the client. Allow inbound TCP port <code>15000</code> through the server computer's firewall for that trusted LAN. Do not enter <code>0.0.0.0</code> as the client host; it is the server's bind address. Keep the service on a local or trusted network because this prototype does not provide production account authentication.</p>
+<p>The optional secondary listener on port <code>15001</code> is used only with <code>-planet-redirect</code> and is experimental. It is not needed for the normal local connection. The exact steps for changing the address in a particular client installation depend on that client; no client configuration files are included here.</p>
 <h2>Layout</h2>
 <pre><code class="language-text">.
 ├── data/                 Go seed loader and generated protocol fixtures

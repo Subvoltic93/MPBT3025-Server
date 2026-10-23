@@ -31,6 +31,26 @@ go run ./src/cmd/server \
 
 Run `go run ./src/cmd/server -h` for the available flags. Planet-state probes, room-type trials, combat initialization, and the second listener are experimental; use them only with an isolated local client.
 
+## Connect a local client
+
+The client connects to the server over Aries on TCP. In the existing client's server-address settings, provide the server host and port; enter a host and port rather than an `http://` URL. Use a separately installed client: this project does not include or distribute client files.
+
+For a client running on the same computer, start the default listener and set the client address to `127.0.0.1`, port `15000`:
+
+```sh
+go run ./src/cmd/server -listen 127.0.0.1:15000
+```
+
+For a client on another computer on your private LAN, bind the server to its network interfaces, then give the client the server computer's LAN IP address and port `15000`:
+
+```sh
+go run ./src/cmd/server -listen 0.0.0.0:15000
+```
+
+For example, if the server computer's LAN address is `192.168.1.25`, enter host `192.168.1.25` and port `15000` in the client. Allow inbound TCP port `15000` through the server computer's firewall for that trusted LAN. Do not enter `0.0.0.0` as the client host; it is the server's bind address. Keep the service on a local or trusted network because this prototype does not provide production account authentication.
+
+The optional secondary listener on port `15001` is used only with `-planet-redirect` and is experimental. It is not needed for the normal local connection. The exact steps for changing the address in a particular client installation depend on that client; no client configuration files are included here.
+
 ## Layout
 
 ```text

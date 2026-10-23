@@ -101,6 +101,41 @@ a:hover, a:focus-visible { color: var(--yellow); }
 
 main { padding: clamp(1rem, 3vw, 2rem); }
 
+.repo-callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 3px ridge var(--gold);
+  background: linear-gradient(110deg, #171744, #111122 72%);
+}
+
+.repo-callout h2 {
+  margin: .2rem 0;
+  color: var(--yellow);
+  font: 700 clamp(1.2rem, 2.5vw, 1.65rem) Arial, Helvetica, sans-serif;
+}
+
+.repo-callout p { margin: .25rem 0 0; color: var(--white); }
+
+.repo-button {
+  flex: 0 0 auto;
+  display: inline-block;
+  padding: .8rem 1rem;
+  border: 2px outset var(--cyan);
+  background: #000066;
+  color: var(--white);
+  font: 700 .9rem Arial, Helvetica, sans-serif;
+  text-align: center;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.repo-button:visited { color: var(--white); }
+.repo-button:hover, .repo-button:focus-visible { background: #111188; color: var(--yellow); }
+
 .status-grid {
   display: grid;
   grid-template-columns: minmax(210px, .7fr) minmax(0, 2fr);
@@ -203,6 +238,8 @@ th:first-child, td:first-child { width: 4.5rem; text-align: center; white-space:
 @media (max-width: 760px) {
   body { padding: .4rem; }
   .site-shell { border-width: 2px; }
+  .repo-callout { align-items: stretch; flex-direction: column; }
+  .repo-button { align-self: flex-start; }
   .status-grid { grid-template-columns: 1fr; }
   .file-groups { grid-template-columns: 1fr; }
   th, td { padding: .5rem; }
